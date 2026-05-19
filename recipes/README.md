@@ -224,6 +224,16 @@ You can use an HPC Recipe for AWS in several ways:
 * **About**: Example for configuration for multi-user AWS PCS using LDAPS
 * **Usage**: [README.md](pcs/multiuser_demo/README.md)
 
+#### nice_dcv ![tag](https://img.shields.io/badge/-community-%2317202A) ![tag](https://img.shields.io/badge/-cryo-em-%23AAB7B8) ![tag](https://img.shields.io/badge/-gpu-%23AAB7B8) ![tag](https://img.shields.io/badge/-nice-dcv-%23AAB7B8) ![tag](https://img.shields.io/badge/-pcs-%23FF9900) ![tag](https://img.shields.io/badge/-relion-%23AAB7B8) ![tag](https://img.shields.io/badge/-visualization-%23AAB7B8) 
+
+* **About**: NICE DCV visualization workstation with Relion for cryo-EM, configured as a PCS BYO login node
+* **Usage**: [README.md](pcs/nice_dcv/README.md)
+
+#### observability_for_pcs ![tag](https://img.shields.io/badge/-ec2-%23FF9900) ![tag](https://img.shields.io/badge/-grafana-%23AAB7B8) ![tag](https://img.shields.io/badge/-hpc-%23AAB7B8) ![tag](https://img.shields.io/badge/-pcs-%23FF9900) ![tag](https://img.shields.io/badge/-prometheus-%23AAB7B8) 
+
+* **About**: Setup grafana observability stack on PCS
+* **Usage**: [README.md](pcs/observability_for_pcs/README.md)
+
 #### spack_for_pcs ![tag](https://img.shields.io/badge/-beta-%23800080) ![tag](https://img.shields.io/badge/-pcs-%23FF9900) ![tag](https://img.shields.io/badge/-spack-%23AAB7B8) 
 
 * **About**: Install Spack on AWS PCS

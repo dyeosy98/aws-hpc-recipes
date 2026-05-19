@@ -1,0 +1,50 @@
+# Project-wide yamllint config tuned for CloudFormation templates and recipe
+# metadata. Defaults are too strict for CFN, which routinely has long lines
+# (ARNs, regex constraints, embedded user-data scripts) and varied indentation
+# under intrinsic functions.
+
+extends: default
+
+rules:
+  # CFN templates frequently exceed 80 chars (ARNs, AllowedPattern regexes,
+  # inline shell). Keep a generous cap so genuinely runaway lines still get
+  # flagged, but normal CFN doesn't.
+  line-length:
+    max: 200
+    level: warning
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # CFN authors mix 2- and 4-space indentation, especially under !Sub and
+  # !Join blocks. yamllint can't reasonably enforce indentation across
+  # heterogenous CFN documents, so disable it. cfn-lint covers structural
+  # issues that actually matter.
+  indentation: disable
+
+  # CFN frequently uses ${...} inside !Sub strings, which yamllint sometimes
+  # parses as flow mappings and complains about brace spacing. Disable.
+  braces: disable
+
+  # Trailing whitespace inside embedded shell heredocs is common and harmless.
+  trailing-spaces: disable
+
+  # Many CFN templates omit the document start marker.
+  document-start: disable
+
+  # Comments don't always start with a space (auto-generated banners).
+  comments:
+    require-starting-space: false
+    min-spaces-from-content: 1
+    ignore-shebangs: true
+  comments-indentation: disable
+
+  # Truthy: CFN parameter defaults like 'true'/'false' as strings are valid;
+  # only flag bare unquoted forms in keys.
+  truthy:
+    check-keys: false
+
+ignore: |
+  .git/
+  node_modules/
+  build/
+  dist/

@@ -31,6 +31,8 @@ Metadata:
         - RTIds
         - DefaultCEMinvCpus
         - DefaultCEMaxvCpus
+        - UseSpotInstances
+        - EnableStreaming
 
     ParameterLabels:
       VPCId:
@@ -45,6 +47,10 @@ Metadata:
         default: Default Queue Min vCPU count
       DefaultCEMaxvCpus:
         default: Default Queue Max vCPU count
+      UseSpotInstances:
+        default: Use Spot Instances
+      EnableStreaming:
+        default: Enable Streaming Inference
 
 Parameters:
   VPCId:
@@ -80,9 +86,25 @@ Parameters:
     Type: Number
     Default: 50
     Description: Size in GiB of EBS root volume
+  UseSpotInstances:
+    Type: String
+    Description: 'Use Spot instances for up to 70% cost savings. See: https://docs.aws.amazon.com/batch/latest/userguide/spot_fleet_IAM_role.html'
+    Default: 'No'
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+  EnableStreaming:
+    Type: String
+    Description: 'Enable buffered streaming inference for long audio files. Processes audio in overlapping chunks, reducing peak VRAM usage.'
+    Default: 'No'
+    AllowedValues:
+      - 'Yes'
+      - 'No'
 
 Conditions:
   ShouldCreateS3Endpoint: !Equals [!Ref CreateS3Endpoint, 'Yes']
+  IsSpot: !Equals [!Ref UseSpotInstances, 'Yes']
+  IsStreaming: !Equals [!Ref EnableStreaming, 'Yes']
 
 Resources:
   BatchCloudWatchAgentConfig:
@@ -168,7 +190,8 @@ Resources:
       Type: MANAGED
       State: ENABLED
       ComputeResources:
-        AllocationStrategy: BEST_FIT_PROGRESSIVE
+        AllocationStrategy: !If [IsSpot, SPOT_PRICE_CAPACITY_OPTIMIZED, BEST_FIT_PROGRESSIVE]
+        BidPercentage: !If [IsSpot, 100, !Ref 'AWS::NoValue']
         LaunchTemplate:
           LaunchTemplateId: !Ref BatchLaunchTemplate
           Version: $Latest
@@ -177,11 +200,12 @@ Resources:
         SecurityGroupIds: !Ref SGIds
         InstanceTypes:
           - "g6.xlarge"
+          - "g6.2xlarge"
           - "g5.xlarge"
         MinvCpus: !Ref DefaultCEMinvCpus
         MaxvCpus: !Ref DefaultCEMaxvCpus
         Subnets: !Ref SubnetIds
-        Type: EC2
+        Type: !If [IsSpot, SPOT, EC2]
         Tags:
           Name: "Inference-demo-batch"
         Ec2Configuration:
@@ -208,11 +232,11 @@ Resources:
             Service: ec2.amazonaws.com
           Action: sts:AssumeRole
       ManagedPolicyArns:
-      - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
-      - !Sub arn:${AWS::Partition}:iam::aws:policy/CloudWatchFullAccessV2
-      - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess
-      - !Sub arn:${AWS::Partition}:iam::aws:policy/CloudWatchAgentServerPolicy
-      - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+      - arn:aws:iam::aws:policy/CloudWatchFullAccessV2
+      - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 
   ECSInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -244,6 +268,26 @@ Resources:
             Value: !Sub ${AWS::StackName}-${AWS::Region}-${AWS::AccountId}-outbucket
           - Name: OUTPUT_FILE_PREFIX
             Value: 'transcription-output/'
+          - !If
+            - IsStreaming
+            - Name: STREAMING_ENABLED
+              Value: 'true'
+            - !Ref 'AWS::NoValue'
+          - !If
+            - IsStreaming
+            - Name: CHUNK_SECS
+              Value: '20'
+            - !Ref 'AWS::NoValue'
+          - !If
+            - IsStreaming
+            - Name: LEFT_CONTEXT_SECS
+              Value: '5.0'
+            - !Ref 'AWS::NoValue'
+          - !If
+            - IsStreaming
+            - Name: RIGHT_CONTEXT_SECS
+              Value: '3.0'
+            - !Ref 'AWS::NoValue'
         Command:
         - python3
         - parakeet_transcribe.py
@@ -394,8 +438,8 @@ Resources:
             Principal: "*"
             Action: "s3:*"
             Resource:
-              - !Sub "arn:${AWS::Partition}:s3:::${InputBucket}/*"
-              - !Sub "arn:${AWS::Partition}:s3:::${InputBucket}"
+              - !Sub "arn:aws:s3:::${InputBucket}/*"
+              - !Sub "arn:aws:s3:::${InputBucket}"
             Condition:
               Bool:
                 "aws:SecureTransport": false
@@ -411,8 +455,8 @@ Resources:
             Principal: "*"
             Action: "s3:*"
             Resource:
-              - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}/*"
-              - !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}"
+              - !Sub "arn:aws:s3:::${OutputBucket}/*"
+              - !Sub "arn:aws:s3:::${OutputBucket}"
             Condition:
               Bool:
                 "aws:SecureTransport": false
@@ -428,8 +472,8 @@ Resources:
             Principal: "*"
             Action: "s3:*"
             Resource:
-              - !Sub "arn:${AWS::Partition}:s3:::${S3BucketLogs}/*"
-              - !Sub "arn:${AWS::Partition}:s3:::${S3BucketLogs}"
+              - !Sub "arn:aws:s3:::${S3BucketLogs}/*"
+              - !Sub "arn:aws:s3:::${S3BucketLogs}"
             Condition:
               Bool:
                 "aws:SecureTransport": false
@@ -437,7 +481,7 @@ Resources:
             Principal:
               Service: logging.s3.amazonaws.com
             Action: s3:PutObject
-            Resource: !Sub arn:${AWS::Partition}:s3:::${S3BucketLogs}/*
+            Resource: !Sub arn:aws:s3:::${S3BucketLogs}/*
             Condition:
               Bool:
                 aws:SecureTransport: true
