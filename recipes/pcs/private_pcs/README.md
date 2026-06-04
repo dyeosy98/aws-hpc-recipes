@@ -2,9 +2,9 @@
 
 ## Info
 
-This recipe provides CloudFormation templates to create the networking and security prerequisites for deploying AWS Parallel Computing Service (PCS) clusters in fully isolated, internet-free environments.
+This recipe provides CloudFormation templates to create the complete infrastructure for deploying AWS Parallel Computing Service (PCS) clusters in fully isolated, internet-free environments.
 
-References: 
+**References:** 
 - [AWS PCS VPC and subnet requirements and considerations](https://docs.aws.amazon.com/pcs/latest/userguide/working-with_networking_vpc-requirements.html)
 - [Access AWS Parallel Computing Service using an interface endpoint (AWS PrivateLink)](https://docs.aws.amazon.com/pcs/latest/userguide/vpc-interface-endpoints.html)
 - [Amazon EFS Using VPC security groups](https://docs.aws.amazon.com/efs/latest/ug/network-access.html)
@@ -21,19 +21,26 @@ The templates create:
 - No Internet Gateway or NAT Gateway (complete isolation)
 - VPC endpoints for AWS PCS API access via PrivateLink
 - EFA-enabled security groups for PCS cluster nodes
-- Optional security groups for shared storage (EFS, FSx for Lustre, FSx for NetApp ONTAP)
-- PCS cluster within the fully-private VPC and optional shared storage
+- Security groups for shared storage (EFS, FSx for Lustre, FSx for NetApp ONTAP)
+- Optional independent shared storage stacks
 
 ## Templates
 
-- [`pcs-private-networking.yaml`](assets/pcs-private-networking.yaml) - Creates networking prerequisites (VPC, private subnets, VPC endpoints) for your PCS controller and compute nodes with no internet access.
-- [`pcs-private-networking-sgs.yaml`](assets/pcs-private-networking-sgs.yaml) - Creates EFA-enabled security groups for PCS cluster nodes and optional security groups for shared storage systems.
+### Main Infrastructure Stack
+- [`pcs-private-networking.yaml`](assets/pcs-private-networking.yaml) - Main template that orchestrates the deployment of VPC, subnets, and security groups via nested stacks:
+  - [`pcs-private-vpc.yaml`](assets/pcs-private-vpc.yaml) - VPC and private subnets (no Internet Gateway or NAT Gateway)
+  - [`pcs-private-sgs.yaml`](assets/pcs-private-sgs.yaml) - EFA-enabled security groups for cluster nodes and storage
+
+### Optional Storage Stacks (Deploy independently after main stack)
+- [`pcs-private-efs.yaml`](assets/pcs-private-efs.yaml) - Amazon EFS file system with mount targets
+- [`pcs-private-fsxl.yaml`](assets/pcs-private-fsxl.yaml) - Amazon FSx for Lustre high-performance file system
+- [`pcs-private-fsxn.yaml`](assets/pcs-private-fsxn.yaml) - Amazon FSx for NetApp ONTAP multi-protocol file system
 
 ## Usage
 
-### Step 1: Deploy Private Networking
+### Step 1: Deploy Main Infrastructure
 
-Deploy the `pcs-private-networking.yaml` template to create the isolated VPC infrastructure:
+Deploy the `pcs-private-networking.yaml` template to create the VPC, subnets, and security groups:
 
 1. Open the AWS CloudFormation console in your target region.
 2. Create a new stack using [`pcs-private-networking.yaml`](assets/pcs-private-networking.yaml).
@@ -43,33 +50,62 @@ Deploy the `pcs-private-networking.yaml` template to create the isolated VPC inf
    - **Subnet1AZ/CIDR**: Availability Zone and CIDR for the first subnet
    - **Subnet2AZ/CIDR**: (Optional) Availability Zone and CIDR for the second subnet
    - **Subnet3AZ/CIDR**: (Optional) Availability Zone and CIDR for the third subnet
-   - **CreateEFS**: Set to 'True' to create an EFS file system
-   - **CreateFSxLustre**: Set to 'True' to create an FSx for Lustre file system
-   - **CreateFSxONTAP**: Set to 'True' to create an FSx for NetApp ONTAP file system
-   - **ClientIpCidr**: IP range allowed to SSH to login nodes (if using bastion access)
-4. Review and create the stack.
-5. After deployment, note the VPC ID and subnet IDs from the stack outputs.
-
-### Step 2: Deploy Security Groups
-
-Deploy the `pcs-private-networking-sgs.yaml` template to create security groups for cluster nodes and optional file systems:
-
-1. Create a new CloudFormation stack using [`pcs-private-networking-sgs.yaml`](assets/pcs-private-networking-sgs.yaml).
-2. Configure parameters:
-   - **VpcId**: Use the VPC ID from Step 1
-   - **StackName**: Parent stack name for resource naming
+   - **CreateEFS**: Set to 'True' if you plan to deploy EFS (creates security group)
+   - **CreateFSxLustre**: Set to 'True' if you plan to deploy FSx for Lustre (creates security group)
+   - **CreateFSxONTAP**: Set to 'True' if you plan to deploy FSx for ONTAP (creates security group)
    - **ClientIpCidr**: IP range allowed to SSH to login nodes
-   - **CreateEFS**: Set to 'True' if you created EFS in Step 1
-   - **CreateFSxLustre**: Set to 'True' if you created FSx for Lustre in Step 1
-   - **CreateFSxONTAP**: Set to 'True' if you created FSx for NetApp ONTAP in Step 1
+   - **HpcRecipesS3Bucket**: S3 bucket containing the templates
+   - **HpcRecipesBranch**: Branch/version of the templates
+4. Review and create the stack.
+5. After deployment, note the stack name - you'll need it for storage stacks.
+
+### Step 2: Deploy Storage (Optional)
+
+Deploy any of the storage stacks as needed. Each storage stack is independent and can be deployed in any order:
+
+#### Deploy Amazon EFS (if CreateEFS was set to 'True' in Step 1)
+
+1. Create a new CloudFormation stack using [`pcs-private-efs.yaml`](assets/pcs-private-efs.yaml).
+2. Configure parameters:
+   - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
+   - **SubnetIds**: Select all the private subnets from the dropdown (EFS will create a mount target in each)
+   - **EFSPerformanceMode**: generalPurpose or maxIO
+   - **EFSThroughputMode**: bursting or elastic
 3. Review and create the stack.
-4. After deployment, note the security group IDs from the stack outputs.
+4. After deployment, use the mount command from the stack outputs to mount EFS on your cluster nodes.
+
+#### Deploy FSx for Lustre (if CreateFSxLustre was set to 'True' in Step 1)
+
+1. Create a new CloudFormation stack using [`pcs-private-fsxl.yaml`](assets/pcs-private-fsxl.yaml).
+2. Configure parameters:
+   - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
+   - **SubnetId**: Select one of the private subnets from the dropdown
+   - **FSxLustreStorageCapacity**: Storage capacity in GiB (minimum 1200, increments of 2400)
+   - **FSxLustrePerUnitStorageThroughput**: Throughput in MB/s/TiB (125, 250, 500, or 1000)
+   - **FSxLustreDataCompressionType**: Data compression (NONE or LZ4 for automatic compression)
+3. Review and create the stack.
+4. After deployment, use the mount command from the stack outputs to mount FSx Lustre on your cluster nodes.
+
+**Note**: This template uses FSx for Lustre PERSISTENT_2 deployment type, which is available in most commercial AWS regions but may not be available in GovCloud regions.
+
+#### Deploy FSx for NetApp ONTAP (if CreateFSxONTAP was set to 'True' in Step 1)
+
+1. Create a new CloudFormation stack using [`pcs-private-fsxn.yaml`](assets/pcs-private-fsxn.yaml).
+2. Configure parameters:
+   - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
+   - **SubnetId**: Select one of the private subnets from the dropdown
+   - **FSxONTAPStorageCapacity**: Storage capacity in GiB (1024-196608)
+   - **FSxONTAPThroughputCapacity**: Throughput in MB/s
+   - **FSxONTAPDeploymentType**: SINGLE_AZ_1 or MULTI_AZ_1
+   - **FSxONTAPVolumeSize**: Volume size in megabytes
+3. Review and create the stack.
+4. After deployment, use the mount command from the stack outputs to mount FSx ONTAP on your cluster nodes.
 
 ### Step 3: Create Your PCS Cluster
 
-Use the VPC, subnets, and security groups created in Steps 1-2 to configure your PCS cluster through the AWS PCS console or AWS CLI. Configure your cluster to use:
-- The VPC and private subnets from Step 1
-- The cluster security group from Step 2
+Use the VPC, subnets, and security groups created in Step 1 to configure your PCS cluster through the AWS PCS console or AWS CLI. Configure your cluster to use:
+- The VPC and private subnets (from pcs-private-networking stack outputs)
+- The cluster security groups (from pcs-private-networking stack outputs)
 - VPC endpoints for AWS service access
 
 Refer to the [AWS PCS User Guide](https://docs.aws.amazon.com/pcs/latest/userguide/getting-started.html) for detailed cluster creation instructions.
@@ -96,15 +132,18 @@ Connect through AWS Site-to-Site VPN or AWS Direct Connect from your on-premises
 - **VPC Endpoints**: The template creates VPC endpoints for AWS PCS API access. You may need additional endpoints for other AWS services (S3, ECR, CloudWatch, etc.).
 - **DNS Resolution**: The VPC has DNS hostnames enabled to support VPC endpoint DNS resolution.
 - **Security Groups**: Follow AWS PCS security group requirements for proper Slurm communication between controller, compute nodes, and login nodes.
+- **Storage Independence**: Storage stacks are independent and can be deployed, updated, or deleted without affecting the main infrastructure or other storage stacks.
 
 ## Cleaning Up
 
 To delete the resources created by this recipe:
 
 1. Delete your PCS cluster through the AWS PCS console or CLI.
-2. Delete the CloudFormation stack created in Step 2 (security groups).
-3. Delete the CloudFormation stack created in Step 1 (networking).
+2. Delete any storage stacks (pcs-private-efs, pcs-private-fsxl, pcs-private-fsxn) that you deployed.
+3. Delete the main infrastructure stack (pcs-private-networking).
 4. If you created any additional resources (bastion hosts, VPN connections, etc.), delete those as well.
+
+**Note**: Storage stacks must be deleted before the main pcs-private-networking stack, as they depend on the security groups and networking resources.
 
 ## See Also
 

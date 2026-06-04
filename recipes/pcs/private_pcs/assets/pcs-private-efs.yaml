@@ -24,6 +24,7 @@ Parameters:
   NetworkingStackName:
     Description: Name of the pcs-private-networking CloudFormation stack
     Type: String
+    Default: 'pcs-private-networking'
 
   SubnetIds:
     Description: Select the private subnets for EFS mount targets (select all subnets from the networking stack)
