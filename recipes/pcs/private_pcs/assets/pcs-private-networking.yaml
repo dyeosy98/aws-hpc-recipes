@@ -1,13 +1,11 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Networking requirements for AWS PCS cluster with no internet access.
-  This template creates a fully private VPC and subnet for AWS Parallel Computing Service (PCS) clusters with no internet connectivity.
-  The VPC supports 1, 2, or 3 private subnets across user-selected Availability Zones, with no Internet Gateway or NAT Gateway.
-  Private subnets are configured for isolated workloads that communicate only within the VPC or through VPC endpoints.
-  Each subnet is associated with a dedicated route table for local VPC traffic only.
-  This architecture is suitable for highly secure environments where compute nodes must not have any internet access.
-  For AWS PCS API access, you should configure VPC endpoints (AWS PrivateLink) separately.
-  Refer to the Outputs tab of the deployed stack for resource identifiers including VPC ID, subnet IDs, and route table IDs.
+
+### This template creates a fully private VPC and subnet for AWS Parallel Computing Service (PCS) clusters with no internet connectivity. 
+### The VPC supports 1, 2, or 3 private subnets across user-selected Availability Zones, with no Internet Gateway or NAT Gateway.
+### Private subnets are configured for isolated workloads that communicate only within the VPC or through VPC endpoints.
+### Each subnet is associated with a dedicated route table for local VPC traffic only.
 
 ### Stack metadata
 Metadata:
@@ -38,9 +36,10 @@ Metadata:
         Parameters:
           - ClientIpCidr
       - Label:
-          default: Template Source
+          default: HPC Recipes Configuration
         Parameters:
-          - GitHubBranch
+          - HpcRecipesS3Bucket
+          - HpcRecipesBranch
 
 Parameters:
   VpcCIDR:
@@ -69,8 +68,8 @@ Parameters:
     ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
 
   Subnet2AZ:
-    Description: Availability Zone for the second private subnet (required if NumberOfSubnets is 2)
-    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Availability Zone for the second private subnet (required if NumberOfSubnets is 2 or 3, e.g., ap-northeast-1a)
+    Type: String
     Default: ''
 
   Subnet2CIDR:
@@ -81,8 +80,8 @@ Parameters:
     ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x or empty
 
   Subnet3AZ:
-    Description: Availability Zone for the third private subnet (required if NumberOfSubnets is 3)
-    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Availability Zone for the third private subnet (required if NumberOfSubnets is 3, e.g., ap-northeast-1a)
+    Type: String
     Default: ''
 
   Subnet3CIDR:
@@ -123,8 +122,17 @@ Parameters:
     AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
     ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
 
-  GitHubBranch:
-    Description: GitHub branch to use for nested stack templates
+  HpcRecipesS3Bucket:
+    Description: HPC Recipes for AWS S3 bucket
+    Type: String
+    Default: aws-hpc-recipes
+    AllowedValues:
+      - aws-hpc-recipes
+      - aws-hpc-recipes-dev
+      - 688462158650-private-pcs-scripts
+
+  HpcRecipesBranch:
+    Description: HPC Recipes for AWS version/branch
     Type: String
     Default: main
 
@@ -257,7 +265,7 @@ Resources:
   SecurityGroups:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://raw.githubusercontent.com/aws-samples/aws-hpc-recipes/${GitHubBranch}/recipes/pcs/private_pcs/assets/pcs-private-networking-sgs.yaml'
+      TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.${AWS::Region}.${AWS::URLSuffix}/${HpcRecipesBranch}/recipes/pcs/private_pcs/assets/pcs-private-networking-sgs.yaml'
       Parameters:
         VpcId: !Ref Vpc
         StackName: !Ref AWS::StackName

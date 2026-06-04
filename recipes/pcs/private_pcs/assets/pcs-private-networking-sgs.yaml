@@ -1,8 +1,8 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Security groups for AWS PCS private cluster with optional file systems.
-  This template creates EFA-enabled security groups for PCS cluster nodes and optional file systems.
-  All security groups support self-referencing rules for EFA (Elastic Fabric Adapter) networking.
+  
+### This template creates EFA-enabled security groups for PCS cluster nodes and optional file systems.
 
 Parameters:
   VpcId:
@@ -82,7 +82,7 @@ Resources:
       IpProtocol: '-1'
       FromPort: 6818
       ToPort: 6818
-      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
       Description: Allow outbound traffic from slurmctld to slurmd running on EC2 instances within cluster (required for PCS cluster communication)
 
   # Login Node Security Group
@@ -115,7 +115,7 @@ Resources:
       IpProtocol: '-1'
       FromPort: 6817
       ToPort: 6818
-      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
       Description: Allow outbound traffic to slurmd and slurmctld from cluster
 
   # Allow Srun traffic
@@ -137,7 +137,7 @@ Resources:
       IpProtocol: '-1'
       FromPort: 60001
       ToPort: 63000
-      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
       Description: Allow outbound traffic to cluster for srun
 
   # Allow SSH access to login nodes from specified IP range
@@ -344,7 +344,7 @@ Resources:
       IpProtocol: '-1'
       FromPort: 6817
       ToPort: 6818
-      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
       Description: Allow outbound traffic to slurmd and slurmctld from login nodes
 
   # Allow Srun traffic
@@ -366,7 +366,7 @@ Resources:
       IpProtocol: '-1'
       FromPort: 60001
       ToPort: 63000
-      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
       Description: Allow outbound traffic to compute node groups for srun
 
   # Allow compute nodes to access EFS (conditional)
@@ -917,41 +917,29 @@ Resources:
       Description: Ping for troubleshooting
 
 Outputs:
-  PCSClusterSecurityGroupId:
+  ClusterSecurityGroupId:
     Description: SG ID for PCS cluster - shared by controller, compute, and login nodes
     Value: !Ref PCSClusterSecurityGroup
-    Export:
-      Name: !Sub '${StackName}-ClusterSecurityGroupId'
 
   LoginNodeSecurityGroupId:
     Description: SG ID for PCS login nodes
     Value: !Ref LoginNodeSecurityGroup
-    Export:
-      Name: !Sub '${StackName}-LoginNodeSecurityGroupId'
 
   ComputeNodeSecurityGroupId:
     Description: SG ID for PCS compute nodes
     Value: !Ref ComputeNodeSecurityGroup
-    Export:
-      Name: !Sub '${StackName}-ComputeNodeSecurityGroupId'
 
   EFSSecurityGroupId:
     Description: SG ID for Amazon EFS file system (only if created)
     Condition: CreateEFSResources
     Value: !Ref EFSSecurityGroup
-    Export:
-      Name: !Sub '${StackName}-EFSSecurityGroupId'
 
   FSxLustreSecurityGroupId:
     Description: SG ID for FSx for Lustre file system (only if created)
     Condition: CreateFSxLustreResources
     Value: !Ref FSxLustreSecurityGroup
-    Export:
-      Name: !Sub '${StackName}-FSxLustreSecurityGroupId'
 
   FSxONTAPSecurityGroupId:
     Description: SG ID for FSx for NetApp ONTAP file system (only if created)
     Condition: CreateFSxONTAPResources
     Value: !Ref FSxONTAPSecurityGroup
-    Export:
-      Name: !Sub '${StackName}-FSxONTAPSecurityGroupId'
