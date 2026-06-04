@@ -1,11 +1,11 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Networking requirements for AWS PCS cluster with no internet access.
+Description: Complete private PCS cluster infrastructure with no internet access.
 
-### This template creates a fully private VPC and subnet for AWS Parallel Computing Service (PCS) clusters with no internet connectivity. 
-### The VPC supports 1, 2, or 3 private subnets across user-selected Availability Zones, with no Internet Gateway or NAT Gateway.
-### Private subnets are configured for isolated workloads that communicate only within the VPC or through VPC endpoints.
-### Each subnet is associated with a dedicated route table for local VPC traffic only.
+### This template orchestrates the deployment of a fully private AWS PCS cluster including:
+### - VPC and private subnets (no Internet Gateway or NAT Gateway)
+### - Security groups for cluster nodes and file systems
+### - Optional shared storage (EFS, FSx for Lustre, FSx for NetApp ONTAP)
 
 ### Stack metadata
 Metadata:
@@ -128,7 +128,6 @@ Parameters:
     Default: aws-hpc-recipes
     AllowedValues:
       - aws-hpc-recipes
-      - aws-hpc-recipes-dev
       - 688462158650-private-pcs-scripts
 
   HpcRecipesBranch:
@@ -144,192 +143,97 @@ Conditions:
   CreateEFSResources: !Equals [!Ref CreateEFS, 'True']
   CreateFSxLustreResources: !Equals [!Ref CreateFSxLustre, 'True']
   CreateFSxONTAPResources: !Equals [!Ref CreateFSxONTAP, 'True']
+  CreateAnyStorage: !Or
+    - !Equals [!Ref CreateEFS, 'True']
+    - !Equals [!Ref CreateFSxLustre, 'True']
+    - !Equals [!Ref CreateFSxONTAP, 'True']
 
 Resources:
-  # VPC
-  Vpc:
-    Type: AWS::EC2::VPC
+  # VPC and Networking Nested Stack
+  Networking:
+    Type: AWS::CloudFormation::Stack
     Properties:
-      CidrBlock: !Ref VpcCIDR
-      EnableDnsHostnames: true
-      EnableDnsSupport: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PrivatePcsVpc'
-        - Key: Stack
-          Value: !Ref AWS::StackId
-
-  # Private Subnet 1
-  PrivateSubnet1:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Ref Subnet1AZ
-      CidrBlock: !Ref Subnet1CIDR
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PrivateSubnet1-${Subnet1AZ}'
-        - Key: Stack
-          Value: !Ref AWS::StackId
-
-  # Private Subnet 2 (conditional)
-  PrivateSubnet2:
-    Type: AWS::EC2::Subnet
-    Condition: CreateSubnet2
-    Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Ref Subnet2AZ
-      CidrBlock: !Ref Subnet2CIDR
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PrivateSubnet2-${Subnet2AZ}'
-        - Key: Stack
-          Value: !Ref AWS::StackId
-
-  # Route Table for Subnet 1
-  RouteTablePrivate1:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref Vpc
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PrivateRouteTable1'
-        - Key: Stack
-          Value: !Ref AWS::StackId
-
-  # Route Table for Subnet 2 (conditional)
-  RouteTablePrivate2:
-    Type: AWS::EC2::RouteTable
-    Condition: CreateSubnet2
-    Properties:
-      VpcId: !Ref Vpc
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PrivateRouteTable2'
-        - Key: Stack
-          Value: !Ref AWS::StackId
-
-  # Route Table Association for Subnet 1
-  RouteAssociationPrivate1:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PrivateSubnet1
-      RouteTableId: !Ref RouteTablePrivate1
-
-  # Route Table Association for Subnet 2 (conditional)
-  RouteAssociationPrivate2:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: CreateSubnet2
-    Properties:
-      SubnetId: !Ref PrivateSubnet2
-      RouteTableId: !Ref RouteTablePrivate2
-
-  # Private Subnet 3 (conditional)
-  PrivateSubnet3:
-    Type: AWS::EC2::Subnet
-    Condition: CreateSubnet3
-    Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Ref Subnet3AZ
-      CidrBlock: !Ref Subnet3CIDR
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PrivateSubnet3-${Subnet3AZ}'
-        - Key: Stack
-          Value: !Ref AWS::StackId
-
-  # Route Table for Subnet 3 (conditional)
-  RouteTablePrivate3:
-    Type: AWS::EC2::RouteTable
-    Condition: CreateSubnet3
-    Properties:
-      VpcId: !Ref Vpc
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-PrivateRouteTable3'
-        - Key: Stack
-          Value: !Ref AWS::StackId
-
-  # Route Table Association for Subnet 3 (conditional)
-  RouteAssociationPrivate3:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Condition: CreateSubnet3
-    Properties:
-      SubnetId: !Ref PrivateSubnet3
-      RouteTableId: !Ref RouteTablePrivate3
+      TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.${AWS::Region}.${AWS::URLSuffix}/${HpcRecipesBranch}/recipes/pcs/private_pcs/assets/pcs-private-vpc.yaml'
+      Parameters:
+        StackName: !Ref AWS::StackName
+        VpcCIDR: !Ref VpcCIDR
+        NumberOfSubnets: !Ref NumberOfSubnets
+        Subnet1AZ: !Ref Subnet1AZ
+        Subnet1CIDR: !Ref Subnet1CIDR
+        Subnet2AZ: !Ref Subnet2AZ
+        Subnet2CIDR: !Ref Subnet2CIDR
+        Subnet3AZ: !Ref Subnet3AZ
+        Subnet3CIDR: !Ref Subnet3CIDR
 
   # Security Groups Nested Stack
   SecurityGroups:
     Type: AWS::CloudFormation::Stack
+    DependsOn: Networking
     Properties:
-      TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.${AWS::Region}.${AWS::URLSuffix}/${HpcRecipesBranch}/recipes/pcs/private_pcs/assets/pcs-private-networking-sgs.yaml'
+      TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.${AWS::Region}.${AWS::URLSuffix}/${HpcRecipesBranch}/recipes/pcs/private_pcs/assets/pcs-private-sgs.yaml'
       Parameters:
-        VpcId: !Ref Vpc
+        VpcId: !GetAtt Networking.Outputs.VpcId
         StackName: !Ref AWS::StackName
         ClientIpCidr: !Ref ClientIpCidr
         CreateEFS: !Ref CreateEFS
         CreateFSxLustre: !Ref CreateFSxLustre
         CreateFSxONTAP: !Ref CreateFSxONTAP
 
+
 Outputs:
   VpcId:
     Description: ID of the VPC
-    Value: !Ref Vpc
+    Value: !GetAtt Networking.Outputs.VpcId
     Export:
       Name: !Sub '${AWS::StackName}-VpcId'
 
+  StackName:
+    Description: Name of this CloudFormation stack (for reference in storage stacks)
+    Value: !Ref AWS::StackName
+
   PrivateSubnet1Id:
     Description: ID of the first private subnet
-    Value: !Ref PrivateSubnet1
+    Value: !GetAtt Networking.Outputs.PrivateSubnet1Id
     Export:
       Name: !Sub '${AWS::StackName}-PrivateSubnet1Id'
 
   PrivateSubnet1AZ:
     Description: Availability Zone of the first private subnet
-    Value: !Ref Subnet1AZ
+    Value: !GetAtt Networking.Outputs.PrivateSubnet1AZ
     Export:
       Name: !Sub '${AWS::StackName}-PrivateSubnet1AZ'
 
   PrivateSubnet2Id:
     Description: ID of the second private subnet (only if created)
     Condition: CreateSubnet2
-    Value: !Ref PrivateSubnet2
+    Value: !GetAtt Networking.Outputs.PrivateSubnet2Id
     Export:
       Name: !Sub '${AWS::StackName}-PrivateSubnet2Id'
 
   PrivateSubnet2AZ:
     Description: Availability Zone of the second private subnet (only if created)
     Condition: CreateSubnet2
-    Value: !Ref Subnet2AZ
+    Value: !GetAtt Networking.Outputs.PrivateSubnet2AZ
     Export:
       Name: !Sub '${AWS::StackName}-PrivateSubnet2AZ'
 
   PrivateSubnet3Id:
     Description: ID of the third private subnet (only if created)
     Condition: CreateSubnet3
-    Value: !Ref PrivateSubnet3
+    Value: !GetAtt Networking.Outputs.PrivateSubnet3Id
     Export:
       Name: !Sub '${AWS::StackName}-PrivateSubnet3Id'
 
   PrivateSubnet3AZ:
     Description: Availability Zone of the third private subnet (only if created)
     Condition: CreateSubnet3
-    Value: !Ref Subnet3AZ
+    Value: !GetAtt Networking.Outputs.PrivateSubnet3AZ
     Export:
       Name: !Sub '${AWS::StackName}-PrivateSubnet3AZ'
 
   PrivateSubnetIds:
     Description: Comma-separated list of private subnet IDs
-    Value: !If
-      - CreateSubnet3
-      - !Sub '${PrivateSubnet1},${PrivateSubnet2},${PrivateSubnet3}'
-      - !If
-        - CreateSubnet2
-        - !Sub '${PrivateSubnet1},${PrivateSubnet2}'
-        - !Ref PrivateSubnet1
+    Value: !GetAtt Networking.Outputs.PrivateSubnetIds
     Export:
       Name: !Sub '${AWS::StackName}-PrivateSubnetIds'
 
@@ -371,6 +275,24 @@ Outputs:
     Value: !GetAtt SecurityGroups.Outputs.FSxONTAPSecurityGroupId
     Export:
       Name: !Sub '${AWS::StackName}-FSxONTAPSecurityGroupId'
+
+  CreateEFSParameter:
+    Description: Whether to create EFS file system
+    Value: !Ref CreateEFS
+    Export:
+      Name: !Sub '${AWS::StackName}-CreateEFS'
+
+  CreateFSxLustreParameter:
+    Description: Whether to create FSx for Lustre file system
+    Value: !Ref CreateFSxLustre
+    Export:
+      Name: !Sub '${AWS::StackName}-CreateFSxLustre'
+
+  CreateFSxONTAPParameter:
+    Description: Whether to create FSx for NetApp ONTAP file system
+    Value: !Ref CreateFSxONTAP
+    Export:
+      Name: !Sub '${AWS::StackName}-CreateFSxONTAP'
 
   # RouteTablePrivate1Id:
   #   Description: ID of the first private route table

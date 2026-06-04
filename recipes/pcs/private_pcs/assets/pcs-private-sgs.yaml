@@ -1,0 +1,945 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Security groups for AWS PCS private cluster with optional file systems.
+  
+### This template creates EFA-enabled security groups for PCS cluster nodes and optional file systems.
+
+Parameters:
+  VpcId:
+    Description: VPC ID where security groups will be created
+    Type: AWS::EC2::VPC::Id
+
+  StackName:
+    Description: Parent stack name for resource naming
+    Type: String
+
+  ClientIpCidr:
+    Description: IP address range allowed to SSH to login nodes
+    Type: String
+    Default: '0.0.0.0/0'
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+
+  CreateEFS:
+    Description: Create Amazon EFS file system SG
+    Type: String
+    Default: 'False'
+    AllowedValues:
+      - 'True'
+      - 'False'
+
+  CreateFSxLustre:
+    Description: Create Amazon FSx for Lustre file system SG
+    Type: String
+    Default: 'False'
+    AllowedValues:
+      - 'True'
+      - 'False'
+
+  CreateFSxONTAP:
+    Description: Create Amazon FSx for NetApp ONTAP file system SG
+    Type: String
+    Default: 'False'
+    AllowedValues:
+      - 'True'
+      - 'False'
+
+Conditions:
+  CreateEFSResources: !Equals [!Ref CreateEFS, 'True']
+  CreateFSxLustreResources: !Equals [!Ref CreateFSxLustre, 'True']
+  CreateFSxONTAPResources: !Equals [!Ref CreateFSxONTAP, 'True']
+
+Resources:
+  # Cluster Security Group (shared by all nodes)
+  # Follows AWS PCS restrictive security group requirements:
+  # https://docs.aws.amazon.com/pcs/latest/userguide/working-with_networking_sg.html#working-with_networking_sg-requirements
+  PCSClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for PCS cluster - enables slurmctld and slurmd communication between controller, compute nodes, and login nodes
+      GroupName: !Sub '${StackName}-PCS-SG'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-PCS-SG'
+
+  # Allow Slurm traffic
+  SlurmSelfIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PCSClusterSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 6817
+      ToPort: 6817
+      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow inbound traffic to slurmctld from EC2 instances within cluster (required for PCS cluster communication)
+
+  # Allow Slurm traffic
+  SlurmSelfEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PCSClusterSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 6818
+      ToPort: 6818
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow outbound traffic from slurmctld to slurmd running on EC2 instances within cluster (required for PCS cluster communication)
+
+  # Login Node Security Group
+  LoginNodeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for PCS login nodes
+      GroupName: !Sub '${StackName}-LoginNode-SG'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-LoginNode-SG'
+
+  # Allow inbound traffic to Slurmd
+  LoginNodeSlurmSelfIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 6817
+      ToPort: 6817
+      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow inbound traffic to slurmd from slurmctld from cluster
+
+  # Allow outbound traffic to Slurmctld and Slurmd
+  LoginNodeSlurmSelfEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 6817
+      ToPort: 6818
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow outbound traffic to slurmd and slurmctld from cluster
+
+  # Allow Srun traffic
+  LoginNodeSrunSelfIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 60001
+      ToPort: 63000
+      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow inbound traffic from cluster for srun
+
+  # Allow Srun traffic
+  LoginNodeSrunSelfEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 60001
+      ToPort: 63000
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow outbound traffic to cluster for srun
+
+  # Allow SSH access to login nodes from specified IP range
+  LoginNodeSSHIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: !Ref ClientIpCidr
+      Description: Allow SSH access from specified IP range
+
+  # Allow login nodes to access EFS (conditional)
+  LoginNodeToEFSEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateEFSResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      DestinationSecurityGroupId: !Ref EFSSecurityGroup
+      Description: Allow NFS traffic to EFS
+
+  # Allow login nodes to access FSx Lustre (conditional)
+  LoginNodeToFSxLustreEgressRule1:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 988
+      ToPort: 988
+      DestinationSecurityGroupId: !Ref FSxLustreSecurityGroup
+      Description: Allow Lustre traffic to FSx Lustre
+
+  LoginNodeToFSxLustreEgressRule2:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1018
+      ToPort: 1023
+      DestinationSecurityGroupId: !Ref FSxLustreSecurityGroup
+      Description: Allow Lustre traffic to FSx Lustre
+
+  # Allow login nodes to access FSx ONTAP (conditional)
+  LoginNodeToFSxONTAPEgressRuleTCP111:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 111
+      ToPort: 111
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: Remote procedure call for NFS to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleUDP111:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: udp
+      FromPort: 111
+      ToPort: 111
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: Remote procedure call for NFS to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleTCP635:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 635
+      ToPort: 635
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS mount to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleUDP635:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: udp
+      FromPort: 635
+      ToPort: 635
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS mount to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleTCP2049:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS daemon to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleUDP2049:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: udp
+      FromPort: 2049
+      ToPort: 2049
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS daemon to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleTCP4045:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4045
+      ToPort: 4045
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS lock daemon to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleTCP4046:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4046
+      ToPort: 4046
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS status monitor to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleUDP4049:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: udp
+      FromPort: 4049
+      ToPort: 4049
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS quota protocol to FSx ONTAP
+
+  LoginNodeToFSxONTAPEgressRuleICMP:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: icmp
+      FromPort: -1
+      ToPort: -1
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: Ping to FSx ONTAP for troubleshooting
+
+  # Compute Node Security Group
+  ComputeNodeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for PCS compute nodes
+      GroupName: !Sub '${StackName}-ComputeNode-SG'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-ComputeNode-SG'
+
+  # Allow compute nodes to communicate with themselves (Slurm and EFA-enabled)
+  ComputeNodeSelfIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: '-1'
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow all inbound traffic within compute node SG for Slurm and EFA
+
+  ComputeNodeSelfEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: '-1'
+      DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow all outbound traffic within compute node SG for Slurm and EFA
+
+  # Allow inbound traffic to Slurmd
+  ComputeNodeSlurmSelfIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 6817
+      ToPort: 6817
+      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow inbound traffic to slurmd from slurmctld from login nodes
+
+  # Allow outbound traffic to Slurmctld and Slurmd
+  ComputeNodeSlurmSelfEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 6817
+      ToPort: 6818
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow outbound traffic to slurmd and slurmctld from login nodes
+
+  # Allow Srun traffic
+  ComputeNodeSrunSelfIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 60001
+      ToPort: 63000
+      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow inbound traffic from compute node groups for srun
+
+  # Allow Srun traffic
+  ComputeNodeSrunSelfEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: '-1'
+      FromPort: 60001
+      ToPort: 63000
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow outbound traffic to compute node groups for srun
+
+  # Allow compute nodes to access EFS (conditional)
+  ComputeNodeToEFSEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateEFSResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      DestinationSecurityGroupId: !Ref EFSSecurityGroup
+      Description: Allow NFS traffic to EFS
+
+  # Allow compute nodes to access FSx Lustre (conditional)
+  ComputeNodeToFSxLustreEgressRule1:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 988
+      ToPort: 988
+      DestinationSecurityGroupId: !Ref FSxLustreSecurityGroup
+      Description: Allow Lustre traffic to FSx Lustre
+
+  ComputeNodeToFSxLustreEgressRule2:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1018
+      ToPort: 1023
+      DestinationSecurityGroupId: !Ref FSxLustreSecurityGroup
+      Description: Allow Lustre traffic to FSx Lustre
+
+  # Allow compute nodes to access FSx ONTAP (conditional)
+  ComputeNodeToFSxONTAPEgressRuleTCP111:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 111
+      ToPort: 111
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: Remote procedure call for NFS to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleUDP111:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: udp
+      FromPort: 111
+      ToPort: 111
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: Remote procedure call for NFS to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleTCP635:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 635
+      ToPort: 635
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS mount to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleUDP635:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: udp
+      FromPort: 635
+      ToPort: 635
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS mount to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleTCP2049:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS daemon to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleUDP2049:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: udp
+      FromPort: 2049
+      ToPort: 2049
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS daemon to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleTCP4045:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4045
+      ToPort: 4045
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS lock daemon to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleTCP4046:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4046
+      ToPort: 4046
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS status monitor to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleUDP4049:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: udp
+      FromPort: 4049
+      ToPort: 4049
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: NFS quota protocol to FSx ONTAP
+
+  ComputeNodeToFSxONTAPEgressRuleICMP:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: icmp
+      FromPort: -1
+      ToPort: -1
+      DestinationSecurityGroupId: !Ref FSxONTAPSecurityGroup
+      Description: Ping to FSx ONTAP for troubleshooting
+
+  # EFS Security Groups (conditional)
+
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateEFSResources
+    Properties:
+      GroupDescription: SG for Amazon EFS file system
+      GroupName: !Sub '${StackName}-EFS-SG'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-EFS-SG'
+
+  # Allow EFS to accept NFS traffic from login nodes
+  EFSFromLoginIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateEFSResources
+    Properties:
+      GroupId: !Ref EFSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow NFS traffic from login nodes
+
+  # Allow EFS to accept NFS traffic from compute nodes
+  EFSFromComputeIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateEFSResources
+    Properties:
+      GroupId: !Ref EFSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow NFS traffic from compute nodes
+
+  # FSx for Lustre Security Groups (conditional)
+
+  FSxLustreSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupDescription: SG for FSx for Lustre file system
+      GroupName: !Sub '${StackName}-FSxLustre-SG'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-FSxLustre-SG'
+
+  # Allow FSx Lustre to communicate with itself (EFA-enabled)
+  FSxLustreSelfIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: '-1'
+      SourceSecurityGroupId: !Ref FSxLustreSecurityGroup
+      Description: Allow all inbound traffic within FSx Lustre SG for EFA
+
+  FSxLustreSelfEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: '-1'
+      DestinationSecurityGroupId: !Ref FSxLustreSecurityGroup
+      Description: Allow all outbound traffic within FSx Lustre SG for EFA
+
+  # Allow FSx Lustre to accept traffic from login nodes (ports 988, 1018-1023)
+  FSxLustreFromLoginIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 988
+      ToPort: 988
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow Lustre traffic from login nodes
+
+  FSxLustreFromLoginIngressRule2:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1018
+      ToPort: 1023
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow Lustre traffic from login nodes
+
+  # Allow FSx Lustre to accept traffic from compute nodes
+  FSxLustreFromComputeIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 988
+      ToPort: 988
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow Lustre traffic from compute nodes
+
+  FSxLustreFromComputeIngressRule2:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1018
+      ToPort: 1023
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow Lustre traffic from compute nodes
+
+  # Allow FSx Lustre to send traffic back to login nodes
+  FSxLustreToLoginEgressRule1:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 988
+      ToPort: 988
+      DestinationSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow Lustre traffic to login nodes
+
+  FSxLustreToLoginEgressRule2:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1018
+      ToPort: 1023
+      DestinationSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow Lustre traffic to login nodes
+
+  # Allow FSx Lustre to send traffic back to compute nodes
+  FSxLustreToComputeEgressRule1:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 988
+      ToPort: 988
+      DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow Lustre traffic to compute nodes
+
+  FSxLustreToComputeEgressRule2:
+    Type: AWS::EC2::SecurityGroupEgress
+    Condition: CreateFSxLustreResources
+    Properties:
+      GroupId: !Ref FSxLustreSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1018
+      ToPort: 1023
+      DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow Lustre traffic to compute nodes
+
+  # FSx for NetApp ONTAP Security Groups (conditional)
+
+  FSxONTAPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupDescription: SG for FSx for NetApp ONTAP file system
+      GroupName: !Sub '${StackName}-FSxONTAP-SG'
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-FSxONTAP-SG'
+
+  # FSx ONTAP Ingress Rules from Login Nodes https://docs.aws.amazon.com/fsx/latest/ONTAPGuide/limit-access-security-groups.html
+  # Protocol: TCP - Ports: 111, 635, 2049, 4045, 4046
+  # Protocol: UDP - Ports: 111, 635, 2049, 4049
+  # Protocol: ICMP - Type: All
+
+  FSxONTAPFromLoginIngressRuleTCP111:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 111
+      ToPort: 111
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Remote procedure call for NFS
+
+  FSxONTAPFromLoginIngressRuleUDP111:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: udp
+      FromPort: 111
+      ToPort: 111
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Remote procedure call for NFS
+
+  FSxONTAPFromLoginIngressRuleTCP635:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 635
+      ToPort: 635
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: NFS mount
+
+  FSxONTAPFromLoginIngressRuleUDP635:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: udp
+      FromPort: 635
+      ToPort: 635
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: NFS mount
+
+  FSxONTAPFromLoginIngressRuleTCP2049:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: NFS daemon
+
+  FSxONTAPFromLoginIngressRuleUDP2049:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: udp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: NFS daemon
+
+  FSxONTAPFromLoginIngressRuleTCP4045:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4045
+      ToPort: 4045
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: NFS lock daemon
+
+  FSxONTAPFromLoginIngressRuleTCP4046:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4046
+      ToPort: 4046
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: NFS status monitor
+
+  FSxONTAPFromLoginIngressRuleUDP4049:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: udp
+      FromPort: 4049
+      ToPort: 4049
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: NFS quota protocol
+
+  FSxONTAPFromLoginIngressRuleICMP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: icmp
+      FromPort: -1
+      ToPort: -1
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Ping for troubleshooting
+
+  # FSx ONTAP Ingress Rules from Compute Nodes
+
+  FSxONTAPFromComputeIngressRuleTCP111:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 111
+      ToPort: 111
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Remote procedure call for NFS
+
+  FSxONTAPFromComputeIngressRuleUDP111:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: udp
+      FromPort: 111
+      ToPort: 111
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Remote procedure call for NFS
+
+  FSxONTAPFromComputeIngressRuleTCP635:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 635
+      ToPort: 635
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: NFS mount
+
+  FSxONTAPFromComputeIngressRuleUDP635:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: udp
+      FromPort: 635
+      ToPort: 635
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: NFS mount
+
+  FSxONTAPFromComputeIngressRuleTCP2049:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: NFS daemon
+
+  FSxONTAPFromComputeIngressRuleUDP2049:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: udp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: NFS daemon
+
+  FSxONTAPFromComputeIngressRuleTCP4045:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4045
+      ToPort: 4045
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: NFS lock daemon
+
+  FSxONTAPFromComputeIngressRuleTCP4046:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: tcp
+      FromPort: 4046
+      ToPort: 4046
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: NFS status monitor
+
+  FSxONTAPFromComputeIngressRuleUDP4049:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: udp
+      FromPort: 4049
+      ToPort: 4049
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: NFS quota protocol
+
+  FSxONTAPFromComputeIngressRuleICMP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: CreateFSxONTAPResources
+    Properties:
+      GroupId: !Ref FSxONTAPSecurityGroup
+      IpProtocol: icmp
+      FromPort: -1
+      ToPort: -1
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Ping for troubleshooting
+
+Outputs:
+  ClusterSecurityGroupId:
+    Description: SG ID for PCS cluster - shared by controller, compute, and login nodes
+    Value: !Ref PCSClusterSecurityGroup
+
+  LoginNodeSecurityGroupId:
+    Description: SG ID for PCS login nodes
+    Value: !Ref LoginNodeSecurityGroup
+
+  ComputeNodeSecurityGroupId:
+    Description: SG ID for PCS compute nodes
+    Value: !Ref ComputeNodeSecurityGroup
+
+  EFSSecurityGroupId:
+    Description: SG ID for Amazon EFS file system (only if created)
+    Condition: CreateEFSResources
+    Value: !Ref EFSSecurityGroup
+
+  FSxLustreSecurityGroupId:
+    Description: SG ID for FSx for Lustre file system (only if created)
+    Condition: CreateFSxLustreResources
+    Value: !Ref FSxLustreSecurityGroup
+
+  FSxONTAPSecurityGroupId:
+    Description: SG ID for FSx for NetApp ONTAP file system (only if created)
+    Condition: CreateFSxONTAPResources
+    Value: !Ref FSxONTAPSecurityGroup
