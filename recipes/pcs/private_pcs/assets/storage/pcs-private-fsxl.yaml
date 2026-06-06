@@ -50,7 +50,7 @@ Parameters:
       - 1000
 
   FSxLustreDataCompressionType:
-    Description: Data compression type for FSx for Lustre (LZ4 provides automatic compression)
+    Description: Data compression type for FSx for Lustre (LZ4 provides automatic compression and is recommended)
     Type: String
     Default: LZ4
     AllowedValues:
@@ -93,6 +93,12 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-FSxLustreFileSystemDNS'
 
+  FSxLustreMountName:
+    Description: Mount name of the FSx for Lustre file system
+    Value: !GetAtt FSxLustreFileSystem.LustreMountName
+    Export:
+      Name: !Sub '${AWS::StackName}-FSxLustreMountName'
+
   FSxLustreMountCommand:
     Description: Command to mount the FSx for Lustre file system
-    Value: !Sub 'sudo mount -t lustre -o noatime,flock ${FSxLustreFileSystem.DNSName}@tcp:/${FSxLustreFileSystem.LustreMountName} /mnt/fsx'
+    Value: !Sub 'sudo mount -t lustre -o noatime,flock ${FSxLustreFileSystem.DNSName}@tcp:/${FSxLustreFileSystem.LustreMountName} <FSXL_MOUNT_DIRECTORY>'

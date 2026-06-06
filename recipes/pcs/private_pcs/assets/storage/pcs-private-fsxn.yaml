@@ -1,0 +1,156 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Amazon FSx for NetApp ONTAP file system for AWS PCS private cluster.
+
+### This template creates an Amazon FSx for NetApp ONTAP file system for a private PCS cluster.
+### Deploy this stack after pcs-private.yaml to add FSx for ONTAP multi-protocol storage.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Networking Stack Reference
+        Parameters:
+          - NetworkingStackName
+          - SubnetId
+      - Label:
+          default: FSx for NetApp ONTAP Configuration
+        Parameters:
+          - FSxONTAPStorageCapacity
+          - FSxONTAPThroughputCapacity
+          - FSxONTAPDeploymentType
+          - FSxONTAPVolumeSize
+
+Parameters:
+  NetworkingStackName:
+    Description: Name of the pcs-private-networking CloudFormation stack
+    Type: String
+    Default: 'pcs-private-networking'
+
+  SubnetId:
+    Description: Subnet ID to deploy FSx ONTAP in (must be one of the private subnets from the networking stack)
+    Type: AWS::EC2::Subnet::Id
+
+  FSxONTAPStorageCapacity:
+    Description: Storage capacity for FSx for NetApp ONTAP (GiB)
+    Type: Number
+    Default: 1024
+    MinValue: 1024
+    MaxValue: 196608
+
+  FSxONTAPThroughputCapacity:
+    Description: Throughput capacity for FSx for NetApp ONTAP (MB/s)
+    Type: Number
+    Default: 128
+    AllowedValues:
+      - 128
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 4096
+
+  FSxONTAPDeploymentType:
+    Description: Deployment type for FSx for NetApp ONTAP
+    Type: String
+    Default: SINGLE_AZ_1
+    AllowedValues:
+      - SINGLE_AZ_1
+      - MULTI_AZ_1
+
+  FSxONTAPVolumeSize:
+    Description: Size of the ONTAP volume in megabytes
+    Type: Number
+    Default: 10240
+    MinValue: 1024
+
+Resources:
+  # FSx for NetApp ONTAP File System
+  FSxONTAPFileSystem:
+    Type: AWS::FSx::FileSystem
+    Properties:
+      FileSystemType: ONTAP
+      StorageCapacity: !Ref FSxONTAPStorageCapacity
+      SubnetIds:
+        - !Ref SubnetId
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub '${NetworkingStackName}-FSxONTAPSecurityGroupId'
+      OntapConfiguration:
+        DeploymentType: !Ref FSxONTAPDeploymentType
+        ThroughputCapacity: !Ref FSxONTAPThroughputCapacity
+        PreferredSubnetId: !Ref SubnetId
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-FSxONTAP'
+        - Key: Stack
+          Value: !Ref AWS::StackId
+        - Key: NetworkingStack
+          Value: !Ref NetworkingStackName
+
+  # FSx for NetApp ONTAP Storage Virtual Machine
+  FSxONTAPStorageVirtualMachine:
+    Type: AWS::FSx::StorageVirtualMachine
+    Properties:
+      FileSystemId: !Ref FSxONTAPFileSystem
+      Name: pcs_private_svm
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-SVM'
+        - Key: Stack
+          Value: !Ref AWS::StackId
+
+  # FSx for NetApp ONTAP Volume
+  FSxONTAPVolume:
+    Type: AWS::FSx::Volume
+    Properties:
+      Name: pcs_private_vol1
+      VolumeType: ONTAP
+      OntapConfiguration:
+        StorageVirtualMachineId: !Ref FSxONTAPStorageVirtualMachine
+        JunctionPath: /vol1
+        SizeInMegabytes: !Ref FSxONTAPVolumeSize
+        StorageEfficiencyEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Volume'
+        - Key: Stack
+          Value: !Ref AWS::StackId
+
+Outputs:
+  FSxONTAPFileSystemId:
+    Description: ID of the FSx for NetApp ONTAP file system
+    Value: !Ref FSxONTAPFileSystem
+    Export:
+      Name: !Sub '${AWS::StackName}-FSxONTAPFileSystemId'
+
+  FSxONTAPStorageVirtualMachineId:
+    Description: ID of the FSx for NetApp ONTAP SVM
+    Value: !Ref FSxONTAPStorageVirtualMachine
+    Export:
+      Name: !Sub '${AWS::StackName}-FSxONTAPStorageVirtualMachineId'
+
+  FSxONTAPVolumeId:
+    Description: ID of the FSx for NetApp ONTAP volume
+    Value: !Ref FSxONTAPVolume
+    Export:
+      Name: !Sub '${AWS::StackName}-FSxONTAPVolumeId'
+
+  FSxONTAPSvmId:
+    Description: Storage Virtual Machine ID (use with AWS CLI to get NFS DNS endpoint)
+    Value: !Ref FSxONTAPStorageVirtualMachine
+    Export:
+      Name: !Sub '${AWS::StackName}-FSxONTAPSvmId'
+
+  FSxONTAPVolumeJunctionPath:
+    Description: Junction path for FSx for NetApp ONTAP volume
+    Value: /vol1
+    Export:
+      Name: !Sub '${AWS::StackName}-FSxONTAPVolumeJunctionPath'
+
+  GetNfsDnsCommand:
+    Description: AWS CLI command to retrieve the NFS DNS endpoint
+    Value: !Sub 'aws fsx describe-storage-virtual-machines --storage-virtual-machine-ids ${FSxONTAPStorageVirtualMachine} --query "StorageVirtualMachines[0].Endpoints.Nfs.DNSName" --output text'
+
+  MountCommand:
+    Description: Mount command template (replace <NFS_DNS> with output from GetNfsDnsCommand)
+    Value: 'sudo mount -t nfs -o nfsvers=3 <NFS_DNS>:/vol1 <FSXN_MOUNT_DIRECTORY>'

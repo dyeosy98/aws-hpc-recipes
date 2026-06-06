@@ -153,7 +153,7 @@ Resources:
   Networking:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.${AWS::Region}.${AWS::URLSuffix}/${HpcRecipesBranch}/recipes/pcs/private_pcs/assets/pcs-private-vpc.yaml'
+      TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.${AWS::Region}.${AWS::URLSuffix}/${HpcRecipesBranch}/recipes/pcs/private_pcs/assets/networking/pcs-private-vpc.yaml'
       Parameters:
         StackName: !Ref AWS::StackName
         VpcCIDR: !Ref VpcCIDR
@@ -170,7 +170,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: Networking
     Properties:
-      TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.${AWS::Region}.${AWS::URLSuffix}/${HpcRecipesBranch}/recipes/pcs/private_pcs/assets/pcs-private-sgs.yaml'
+      TemplateURL: !Sub 'https://${HpcRecipesS3Bucket}.s3.${AWS::Region}.${AWS::URLSuffix}/${HpcRecipesBranch}/recipes/pcs/private_pcs/assets/networking/pcs-private-sgs.yaml'
       Parameters:
         VpcId: !GetAtt Networking.Outputs.VpcId
         StackName: !Ref AWS::StackName
