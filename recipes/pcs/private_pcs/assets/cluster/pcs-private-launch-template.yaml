@@ -382,3 +382,15 @@ Outputs:
     Value: !GetAtt LoginLaunchTemplate.LatestVersionNumber
     Export:
       Name: !Sub '${AWS::StackName}-LoginLaunchTemplateLatestVersion'
+
+  ComputeAmiId:
+    Description: AMI ID for Compute Nodes
+    Value: !Ref ComputeAmiId
+    Export:
+      Name: !Sub '${AWS::StackName}-ComputeAmiId'
+
+  LoginAmiId:
+    Description: AMI ID for Login Nodes
+    Value: !Ref LoginAmiId
+    Export:
+      Name: !Sub '${AWS::StackName}-LoginAmiId'
