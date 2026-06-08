@@ -38,6 +38,7 @@ The templates create:
 
 ### Cluster Resources
 - [`pcs-private-launch-template.yaml`](assets/cluster/pcs-private-launch-template.yaml) - EC2 Launch Templates with security groups and user data to mount EFS and FSx Lustre storage
+- [`pcs-private-cluster.yaml`](assets/cluster/pcs-private-cluster.yaml) - AWS PCS cluster with login node group (1 static instance) and compute node group (0-4 hpc8a instances)
 
 ## AMI Requirements
 
@@ -219,24 +220,55 @@ The OperatingSystem parameter is primarily for documentation and reference. Sinc
 - Logs all setup activities to `/var/log/pcs-node-setup.log`
 - **Does NOT install software** - all required software must be pre-installed in the AMI (use AWS PCS sample AMIs)
 
-### Step 4: Create Your PCS Cluster
+### Step 4: Deploy the PCS Cluster
 
-Use the VPC, subnets, security groups, and launch templates to configure your PCS cluster through the AWS PCS console or AWS CLI:
+Deploy the PCS cluster stack to create your cluster with login and compute node groups.
 
-1. **Cluster Configuration**:
-   - VPC and private subnets (from pcs-private-networking stack outputs)
-   - Cluster security groups (from pcs-private-networking stack outputs)
-   - VPC endpoints for AWS service access
+1. Create a new CloudFormation stack using [`pcs-private-cluster.yaml`](assets/cluster/pcs-private-cluster.yaml).
+2. Configure parameters:
+   - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
+   - **LaunchTemplateStackName**: Name of the pcs-private-launch-template stack from Step 3
+   - **ClusterName**: Name for your PCS cluster (e.g., private-hpc-cluster)
+   - **ClusterSize**: Size of the cluster - SMALL (up to 100 instances), MEDIUM (up to 500), or LARGE (up to 5000)
+   - **SlurmVersion**: Slurm version (must match your AMI - typically 25.11)
+   - **EnableAccounting**: Enable Slurm accounting database (default: enabled)
+   - **AccountingPolicyEnforcement**: Slurm accounting policies to enforce (default: associations,limits,safe)
+   - **LoginNodeInstanceType**: Instance type for login nodes (e.g., c6a.xlarge)
+   - **ComputeNodeInstanceType**: Instance type for compute nodes (e.g., hpc8a.96xlarge)
+   - **ComputeNodeMinCount**: Minimum number of compute nodes (0-4)
+   - **ComputeNodeMaxCount**: Maximum number of compute nodes (1-4)
+   - **ComputeNodeSpotBidPercentage**: Set to 0 for on-demand, or 100 to use Spot instances at on-demand price
+3. Review and create the stack.
 
-2. **Compute Node Configuration**:
-   - Use the compute launch template created in Step 3
-   - Select appropriate instance types and counts
+**What this stack creates**:
+- **PCS Cluster**: The main cluster resource with Slurm scheduler and accounting enabled
+  - **SMALL** (default): Up to 100 instances - suitable for development and small workloads
+  - **MEDIUM**: Up to 500 instances - suitable for production workloads
+  - **LARGE**: Up to 5000 instances - suitable for large-scale HPC workloads
+- **Slurm Accounting Database**: Tracks job history, resource usage, and enforces policies (enabled by default)
+- **Login Node Group**: 1 static login node for SSH access and job submission
+- **Compute Node Group**: 0-4 hpc8a.96xlarge compute nodes that auto-scale based on workload
+- **Compute Queue**: Named "compute" - where Slurm jobs are submitted
+- **IAM Role and Instance Profile**: Permissions for PCS nodes (SSM, CloudWatch, PCS API access)
 
-3. **Login Node Configuration** (Optional):
-   - Use the login launch template created in Step 3
-   - Configure access patterns (see Access Patterns section below)
+**Slurm Accounting Features**:
+- **Mode**: STANDARD (AWS-managed accounting database)
+- **Data Retention**: 30 days (configurable via DefaultPurgeTimeInDays)
+- **Policy Enforcement**: Enforces associations, resource limits, and safe accounting records
+- **Usage Tracking**: Monitor cluster usage per user, account, and job
+- **Access Control**: Manage user/account associations and resource limits
 
-Refer to the [AWS PCS User Guide](https://docs.aws.amazon.com/pcs/latest/userguide/getting-started.html) for detailed cluster creation instructions.
+To query accounting data, use Slurm accounting commands on the login node:
+- `sacct` - Display job accounting information
+- `sreport` - Generate usage reports
+- `sacctmgr` - Manage accounts, users, and resource limits
+
+**After deployment**:
+- Access the cluster via one of the access patterns below (bastion host, Session Manager, or VPN)
+- Check the stack outputs for cluster ID, ARN, and node group IDs
+- Use `sinfo` and `squeue` commands to view cluster status and submit jobs
+
+For more details on using the cluster, refer to the [AWS PCS User Guide](https://docs.aws.amazon.com/pcs/latest/userguide/getting-started.html).
 
 ## Access Patterns
 
@@ -266,14 +298,15 @@ Connect through AWS Site-to-Site VPN or AWS Direct Connect from your on-premises
 
 ## Cleaning Up
 
-To delete the resources created by this recipe:
+To delete the resources created by this recipe (in reverse order of deployment):
 
-1. Delete your PCS cluster through the AWS PCS console or CLI.
-2. Delete any storage stacks (pcs-private-efs, pcs-private-fsxl, pcs-private-fsxn) that you deployed.
-3. Delete the main infrastructure stack (pcs-private-networking).
-4. If you created any additional resources (bastion hosts, VPN connections, etc.), delete those as well.
+1. Delete the PCS cluster stack (pcs-private-cluster).
+2. Delete the launch template stack (pcs-private-launch-template).
+3. Delete any storage stacks (pcs-private-efs, pcs-private-fsxl, pcs-private-fsxn) that you deployed.
+4. Delete the main networking stack (pcs-private-networking).
+5. If you created any additional resources (bastion hosts, VPN connections, etc.), delete those as well.
 
-**Note**: Storage stacks must be deleted before the main pcs-private-networking stack, as they depend on the security groups and networking resources.
+**Note**: Stacks must be deleted in the correct order due to dependencies. The cluster depends on launch templates, which depend on networking and storage resources.
 
 ## See Also
 

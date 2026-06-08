@@ -1,27 +1,13 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
-Description: EC2 Launch Templates for AWS PCS private cluster compute and login nodes
+Description: EC2 Launch Templates for AWS PCS private cluster (MIME multipart format required by PCS)
 
-### This template creates TWO EC2 Launch Templates:
-### 1. Compute Node Launch Template:
-###    - Attached to ComputeNodeSecurityGroupId
-###    - Mounts shared storage (EFS, FSx Lustre, FSx ONTAP) at boot time
+### This template creates TWO EC2 Launch Templates with MIME multipart user data:
+### 1. Compute Node Launch Template - Mounts shared storage (EFS, FSx Lustre)
+### 2. Login Node Launch Template - Mounts shared storage (EFS, FSx Lustre)
 ###
-### 2. Login Node Launch Template:
-###    - Attached to LoginNodeSecurityGroupId
-###    - Mounts shared storage (EFS, FSx Lustre, FSx ONTAP) at boot time
-###
-### IMPORTANT: These launch templates handle runtime storage mounting only.
-### They do NOT install software. Use AWS PCS sample AMIs with Slurm 24.11 which include:
-### - EFA drivers (for compute nodes) - requires kernel modules
-### - Lustre client (if using FSx Lustre) - requires kernel modules
-### - NFS utilities (nfs-utils or nfs-common)
-### - Slurm 24.11 and HPC application software
-###
-### Find AWS PCS sample AMI IDs: https://docs.aws.amazon.com/pcs/latest/userguide/ami-release-notes.html
-### Custom AMI guide: https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_custom.html
-###
-### Deploy this stack after networking and storage stacks, before creating the PCS cluster
+### IMPORTANT: User data MUST be in MIME multipart format for AWS PCS
+### See: https://docs.aws.amazon.com/pcs/latest/userguide/working-with_custom-launch-template.html
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -38,20 +24,14 @@ Metadata:
           - FSxLustreStackName
           - FSxLMountDirectory
       - Label:
+          default: AMI Configuration
+        Parameters:
+          - LoginAmiId
+          - ComputeAmiId
+      - Label:
           default: Operating System
         Parameters:
           - OperatingSystem
-      - Label:
-          default: Login Node Configuration
-        Parameters:
-          - LoginInstanceType
-          - LoginAmiId
-      - Label:
-          default: Compute Node Configuration
-        Parameters:
-          - ComputeInstanceType
-          - ComputeAmiId
-
 Parameters:
   NetworkingStackName:
     Description: Name of the pcs-private-networking CloudFormation stack
@@ -59,7 +39,7 @@ Parameters:
     Default: 'pcs-private-networking'
 
   EFSStackName:
-    Description: (Optional) Name of the pcs-private-efs CloudFormation stack. Leave empty if not using EFS.
+    Description: (Optional) Name of the pcs-private-efs CloudFormation stack
     Type: String
     Default: ''
 
@@ -69,7 +49,7 @@ Parameters:
     Default: /home
 
   FSxLustreStackName:
-    Description: (Optional) Name of the pcs-private-fsxl CloudFormation stack. Leave empty if not using FSx Lustre.
+    Description: (Optional) Name of the pcs-private-fsxl CloudFormation stack
     Type: String
     Default: ''
 
@@ -78,6 +58,14 @@ Parameters:
     Type: String
     Default: /fsx
 
+  LoginAmiId:
+    Description: AMI ID for login nodes (AWS PCS sample AMI)
+    Type: AWS::EC2::Image::Id
+
+  ComputeAmiId:
+    Description: AMI ID for compute nodes (AWS PCS sample AMI)
+    Type: AWS::EC2::Image::Id
+  
   OperatingSystem:
     Description: Operating system for the instances (determines package manager and commands)
     Type: String
@@ -89,24 +77,6 @@ Parameters:
       - RHEL9
       - Ubuntu2004
       - Ubuntu2204
-
-  LoginInstanceType:
-    Description: EC2 instance type for login nodes (e.g., c6a.xlarge, m6a.xlarge)
-    Type: String
-    Default: c6a.xlarge
-
-  LoginAmiId:
-    Description: AMI ID for login nodes (use AWS PCS sample AMI at https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_samples.html or your custom AMI)
-    Type: AWS::EC2::Image::Id
-
-  ComputeInstanceType:
-    Description: EC2 instance type for compute nodes (should support EFA, e.g., c6in.32xlarge, hpc7a.96xlarge)
-    Type: String
-    Default: hpc8a.96xlarge
-
-  ComputeAmiId:
-    Description: AMI ID for compute nodes (use AWS PCS sample AMI at https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_samples.html or your custom AMI)
-    Type: AWS::EC2::Image::Id
 
 Conditions:
   UseEFS: !Not [!Equals [!Ref EFSStackName, '']]
@@ -123,27 +93,29 @@ Resources:
       LaunchTemplateName: !Sub '${AWS::StackName}-compute'
       LaunchTemplateData:
         ImageId: !Ref ComputeAmiId
-        InstanceType: !Ref ComputeInstanceType
         SecurityGroupIds:
-          - Fn::ImportValue: !Sub '${NetworkingStackName}-ClusterSecurityGroupId'
           - Fn::ImportValue: !Sub '${NetworkingStackName}-ComputeNodeSecurityGroupId'
         UserData:
           Fn::Base64: !Sub
             - |
+              Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+              MIME-Version: 1.0
+
+              --==MYBOUNDARY==
+              Content-Type: text/x-shellscript; charset="us-ascii"
+
               #!/bin/bash
               set -e
+              exec > >(tee /var/log/pcs-userdata.log) 2>&1
 
-              # Log node setup start
-              echo "Compute node setup starting at $(date)" >> /var/log/pcs-lt-userdata-setup.log
-
-              # NOTE: EFA drivers, Lustre client, and NFS utilities should be pre-installed in your AMI
-              # See: https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_custom.html
+              echo "Compute node setup starting at $(date)"
 
               ${EFSMountScript}
               ${FSxLMountScript}
 
-              # Log completion
-              echo "Compute node setup completed at $(date)" >> /var/log/pcs-lt-userdata-setup.log
+              echo "Compute node setup completed at $(date)"
+
+              --==MYBOUNDARY==--
             - EFSMountScript: !If
                 - UseEFS
                 - !Sub
@@ -186,6 +158,7 @@ Resources:
                 - !Sub
                   - |
                     # Configure FSx Lustre mount (Lustre client must be pre-installed in AMI)
+                    ${MountUser}
                     echo -e "\n=== CONFIGURING FSxL MOUNT ===" >> /var/log/pcs-lt-userdata-setup.log
                     echo "Verifying Lustre client is installed..." >> /var/log/pcs-lt-userdata-setup.log
                     if ! command -v mount.lustre &> /dev/null; then
@@ -218,17 +191,6 @@ Resources:
                     FSxLMountName:
                       Fn::ImportValue: !Sub '${FSxLustreStackName}-FSxLustreMountName'
                 - '# FSx Lustre not configured'
-        TagSpecifications:
-          - ResourceType: instance
-            Tags:
-              - Key: Name
-                Value: !Sub '${AWS::StackName}-compute-node'
-              - Key: NodeType
-                Value: compute
-              - Key: Stack
-                Value: !Ref AWS::StackId
-              - Key: NetworkingStack
-                Value: !Ref NetworkingStackName
 
   # Login Node Launch Template
   LoginLaunchTemplate:
@@ -237,27 +199,29 @@ Resources:
       LaunchTemplateName: !Sub '${AWS::StackName}-login'
       LaunchTemplateData:
         ImageId: !Ref LoginAmiId
-        InstanceType: !Ref LoginInstanceType
         SecurityGroupIds:
-          - Fn::ImportValue: !Sub '${NetworkingStackName}-ClusterSecurityGroupId'
           - Fn::ImportValue: !Sub '${NetworkingStackName}-LoginNodeSecurityGroupId'
         UserData:
           Fn::Base64: !Sub
             - |
+              Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+              MIME-Version: 1.0
+
+              --==MYBOUNDARY==
+              Content-Type: text/x-shellscript; charset="us-ascii"
+
               #!/bin/bash
               set -e
+              exec > >(tee /var/log/pcs-userdata.log) 2>&1
 
-              # Log node setup start
-              echo "Login node setup starting at $(date)" >> /var/log/pcs-lt-userdata-setup.log
-
-              # NOTE: Lustre client and NFS utilities should be pre-installed in your AMI
-              # See: https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_custom.html
+              echo "Login node setup starting at $(date)"
 
               ${EFSMountScript}
               ${FSxLMountScript}
 
-              # Log completion
-              echo "Login node setup completed at $(date)" >> /var/log/pcs-lt-userdata-setup.log
+              echo "Login node setup completed at $(date)"
+
+              --==MYBOUNDARY==--
             - EFSMountScript: !If
                 - UseEFS
                 - !Sub
@@ -301,6 +265,7 @@ Resources:
                 - !Sub
                   - |
                     # Configure FSx Lustre mount (Lustre client must be pre-installed in AMI)
+                    ${MountUser}
                     echo -e "\n=== CONFIGURING FSxL MOUNT ===" >> /var/log/pcs-lt-userdata-setup.log
                     echo "Verifying Lustre client is installed..." >> /var/log/pcs-lt-userdata-setup.log
                     if ! command -v mount.lustre &> /dev/null; then
@@ -334,17 +299,6 @@ Resources:
                     FSxLMountName:
                       Fn::ImportValue: !Sub '${FSxLustreStackName}-FSxLustreMountName'
                 - '# FSx Lustre not configured'
-        TagSpecifications:
-          - ResourceType: instance
-            Tags:
-              - Key: Name
-                Value: !Sub '${AWS::StackName}-login-node'
-              - Key: NodeType
-                Value: login
-              - Key: Stack
-                Value: !Ref AWS::StackId
-              - Key: NetworkingStack
-                Value: !Ref NetworkingStackName
 
 Outputs:
   ComputeLaunchTemplateId:
@@ -353,35 +307,11 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-ComputeLaunchTemplateId'
 
-  ComputeLaunchTemplateName:
-    Description: Name of the Compute Node Launch Template
-    Value: !Sub '${AWS::StackName}-compute'
-    Export:
-      Name: !Sub '${AWS::StackName}-ComputeLaunchTemplateName'
-
-  ComputeLaunchTemplateLatestVersion:
-    Description: Latest version of the Compute Node Launch Template
-    Value: !GetAtt ComputeLaunchTemplate.LatestVersionNumber
-    Export:
-      Name: !Sub '${AWS::StackName}-ComputeLaunchTemplateLatestVersion'
-
   LoginLaunchTemplateId:
     Description: ID of the Login Node Launch Template
     Value: !Ref LoginLaunchTemplate
     Export:
       Name: !Sub '${AWS::StackName}-LoginLaunchTemplateId'
-
-  LoginLaunchTemplateName:
-    Description: Name of the Login Node Launch Template
-    Value: !Sub '${AWS::StackName}-login'
-    Export:
-      Name: !Sub '${AWS::StackName}-LoginLaunchTemplateName'
-
-  LoginLaunchTemplateLatestVersion:
-    Description: Latest version of the Login Node Launch Template
-    Value: !GetAtt LoginLaunchTemplate.LatestVersionNumber
-    Export:
-      Name: !Sub '${AWS::StackName}-LoginLaunchTemplateLatestVersion'
 
   ComputeAmiId:
     Description: AMI ID for Compute Nodes
