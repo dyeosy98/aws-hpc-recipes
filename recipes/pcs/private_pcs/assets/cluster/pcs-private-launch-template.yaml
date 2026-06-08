@@ -32,6 +32,11 @@ Metadata:
           default: Operating System
         Parameters:
           - OperatingSystem
+      - Label:
+          default: SSH Access
+        Parameters:
+          - KeyName
+
 Parameters:
   NetworkingStackName:
     Description: Name of the pcs-private-networking CloudFormation stack
@@ -77,6 +82,10 @@ Parameters:
       - RHEL9
       - Ubuntu2004
       - Ubuntu2204
+
+  KeyName:
+    Description: EC2 Key Pair for SSH access to login nodes
+    Type: AWS::EC2::KeyPair::KeyName
 
 Conditions:
   UseEFS: !Not [!Equals [!Ref EFSStackName, '']]
@@ -199,6 +208,7 @@ Resources:
       LaunchTemplateName: !Sub '${AWS::StackName}-login'
       LaunchTemplateData:
         ImageId: !Ref LoginAmiId
+        KeyName: !Ref KeyName
         SecurityGroupIds:
           - Fn::ImportValue: !Sub '${NetworkingStackName}-LoginNodeSecurityGroupId'
         UserData:

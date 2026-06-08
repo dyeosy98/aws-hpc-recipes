@@ -180,6 +180,9 @@ Before creating the PCS cluster, deploy launch templates that configure security
    - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
    - **OperatingSystem**: Select your OS (AmazonLinux2023 recommended) - must match your AMI
    
+   **For SSH Access**:
+   - **KeyName**: EC2 key pair for SSH access to login nodes (select from dropdown)
+   
    **For Storage Configuration** (all optional):
    - **EFSStackName**: Name of the EFS stack if you deployed EFS
    - **EFSMountDirectory**: Mount point for EFS (e.g., /home)
@@ -201,6 +204,7 @@ Before creating the PCS cluster, deploy launch templates that configure security
 | Feature | Compute Node Template | Login Node Template |
 |---------|----------------------|---------------------|
 | Security Group | ComputeNodeSecurityGroupId | LoginNodeSecurityGroupId |
+| SSH Key | ❌ No SSH access | ✅ SSH key enabled |
 | Storage Mounting | ✅ Mounts EFS and FSx Lustre | ✅ Mounts EFS and FSx Lustre |
 | Typical Instance Types | c6i.32xlarge, hpc7a.96xlarge | c6i.8xlarge, c6i.4xlarge |
 
