@@ -179,6 +179,22 @@ Resources:
         CreateFSxLustre: !Ref CreateFSxLustre
         CreateFSxONTAP: !Ref CreateFSxONTAP
 
+  # VPC Endpoint for AWS PCS (created in main stack after both nested stacks)
+  PCSVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    DependsOn:
+      - Networking
+      - SecurityGroups
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.pcs'
+      VpcId: !GetAtt Networking.Outputs.VpcId
+      SubnetIds: !Split
+        - ','
+        - !GetAtt Networking.Outputs.PrivateSubnetIds
+      SecurityGroupIds:
+        - !GetAtt SecurityGroups.Outputs.PCSVpcEndpointSecurityGroupId
+      PrivateDnsEnabled: true
 
 Outputs:
   VpcId:
@@ -293,6 +309,18 @@ Outputs:
     Value: !Ref CreateFSxONTAP
     Export:
       Name: !Sub '${AWS::StackName}-CreateFSxONTAP'
+
+  PCSVpcEndpointId:
+    Description: ID of the AWS PCS VPC endpoint
+    Value: !Ref PCSVpcEndpoint
+    Export:
+      Name: !Sub '${AWS::StackName}-PCSVpcEndpointId'
+
+  PCSVpcEndpointSecurityGroupId:
+    Description: Security group ID for the AWS PCS VPC endpoint
+    Value: !GetAtt SecurityGroups.Outputs.PCSVpcEndpointSecurityGroupId
+    Export:
+      Name: !Sub '${AWS::StackName}-PCSVpcEndpointSecurityGroupId'
 
   # RouteTablePrivate1Id:
   #   Description: ID of the first private route table

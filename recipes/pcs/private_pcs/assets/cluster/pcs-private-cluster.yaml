@@ -218,7 +218,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub 'AWSPCS-${AWS::StackName}-role'
-      Description: Minimal IAM role for AWS PCS compute node group instances
+      Description: IAM role for AWS PCS compute node group instances
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -226,15 +226,9 @@ Resources:
             Principal:
               Service: ec2.amazonaws.com
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: PCSRegisterInstancePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'pcs:RegisterComputeNodeGroupInstance'
-                Resource: '*'
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/CloudWatchAgentServerPolicy'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AWSPCSComputeNodePolicy'
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-pcs-instance-role'

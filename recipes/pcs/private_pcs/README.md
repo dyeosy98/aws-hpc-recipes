@@ -19,17 +19,19 @@ This architecture is suitable for highly secure environments where compute nodes
 The templates create:
 - A fully private VPC with 1-3 subnets across user-selected Availability Zones
 - No Internet Gateway or NAT Gateway (complete isolation)
-- VPC endpoints for AWS PCS API access via PrivateLink
+- **VPC Interface Endpoint for AWS PCS** - Enables private API access to PCS control plane via AWS PrivateLink
 - EFA-enabled security groups for PCS cluster nodes
+- Security group for PCS VPC endpoint (allows HTTPS from cluster nodes)
 - Security groups for shared storage (EFS, FSx for Lustre, FSx for NetApp ONTAP)
 - Optional independent shared storage stacks
 
 ## Templates
 
 ### Networking Stack
-- [`pcs-private-networking.yaml`](assets/networking/pcs-private-networking.yaml) - Main template that orchestrates the deployment of VPC, subnets, and security groups via nested stacks:
+- [`pcs-private-networking.yaml`](assets/networking/pcs-private-networking.yaml) - Main template that orchestrates the deployment of VPC, subnets, security groups, and PCS VPC endpoint via nested stacks:
   - [`pcs-private-vpc.yaml`](assets/networking/pcs-private-vpc.yaml) - VPC and private subnets (no Internet Gateway or NAT Gateway)
-  - [`pcs-private-sgs.yaml`](assets/networking/pcs-private-sgs.yaml) - EFA-enabled security groups for cluster nodes and storage
+  - [`pcs-private-sgs.yaml`](assets/networking/pcs-private-sgs.yaml) - EFA-enabled security groups for cluster nodes, storage, and PCS VPC endpoint
+  - **PCS VPC Endpoint** - Created in main stack, enables private access to AWS PCS API
 
 ### Storage Stacks (Optional, deploy independently)
 - [`pcs-private-efs.yaml`](assets/storage/pcs-private-efs.yaml) - Amazon EFS file system with mount targets
@@ -104,6 +106,20 @@ If you need to add your own application software:
 This approach gives you AWS's tested base configuration plus your custom software.
 
 ## Usage
+
+### Pre-requisites
+
+Before deploying this recipe, ensure you have:
+
+1. **EC2 Key Pair**: Create an EC2 key pair in your target region for SSH access to login nodes. You can create one via:
+   - AWS Console: EC2 → Key Pairs → Create key pair
+   - AWS CLI: `aws ec2 create-key-pair --key-name my-hpc-key --region <your-region>`
+   
+   Save the private key securely - you'll need it to SSH into login nodes.
+
+2. **AWS Account Access**: Permissions to create CloudFormation stacks, VPCs, EC2 instances, IAM roles, and PCS resources.
+
+3. **AMI IDs**: AWS PCS sample AMI IDs for your region (see AMI Requirements section above).
 
 ### Step 1: Deploy Networking Infrastructure
 
@@ -278,8 +294,21 @@ For more details on using the cluster, refer to the [AWS PCS User Guide](https:/
 
 Since this is a private cluster with no internet access, you'll need one of these access patterns:
 
-### Option 1: Bastion Host
-Deploy a bastion host in a separate public subnet (or an existing VPC with internet access) and use it to SSH into login nodes.
+### Option 1: Bastion Host with VPC Peering
+Deploy a bastion host in a separate VPC (or an existing VPC with internet access) and use VPC peering to connect to the private PCS VPC.
+
+**Setup steps:**
+1. Create a VPC peering connection between the bastion VPC and the private PCS VPC
+2. Accept the peering connection
+3. **Update route tables:**
+   - In the bastion VPC: Add a route to the private PCS VPC CIDR pointing to the peering connection
+   - In the private PCS VPC: Add a route to the bastion VPC CIDR pointing to the peering connection in **all private subnet route tables**
+4. Update security groups:
+   - Bastion VPC: Allow outbound SSH (port 22) to PCS VPC CIDR
+   - PCS Login Node Security Group: Already configured to allow SSH from `ClientIpCidr` (set this to bastion VPC CIDR when deploying networking stack)
+5. SSH from bastion host to login nodes using their private IP addresses
+
+**Important**: Remember to add routes in the private subnet route tables for the peering connection, otherwise traffic won't route properly between the VPCs.
 
 ### Option 2: AWS Systems Manager Session Manager
 Use AWS Systems Manager Session Manager to establish sessions to login nodes without requiring a bastion host or direct internet connectivity.
@@ -295,9 +324,17 @@ Connect through AWS Site-to-Site VPN or AWS Direct Connect from your on-premises
   - Available through VPC endpoints (e.g., S3 Gateway Endpoint for accessing S3)
   - Accessible via on-premises connections (VPN/Direct Connect)
 - **Kernel Module Software**: Software requiring kernel modules (EFA drivers, Lustre client) cannot be installed via user data at boot time. They must be pre-installed in the AMI with modules compiled for the running kernel. AWS PCS sample AMIs include these pre-compiled.
-- **VPC Endpoints**: The template creates VPC endpoints for AWS PCS API access. You may need additional endpoints for other AWS services (S3, ECR, CloudWatch, etc.).
-- **DNS Resolution**: The VPC has DNS hostnames enabled to support VPC endpoint DNS resolution.
-- **Security Groups**: Follow AWS PCS security group requirements for proper Slurm communication between controller, compute nodes, and login nodes.
+- **VPC Endpoints**: 
+  - **AWS PCS VPC Endpoint**: Automatically created by the networking stack for private API access to PCS control plane
+  - **Additional Endpoints**: You may need additional VPC endpoints for other AWS services:
+    - `com.amazonaws.<region>.s3` - S3 Gateway Endpoint for bucket access
+    - `com.amazonaws.<region>.ecr.api` and `com.amazonaws.<region>.ecr.dkr` - For container images
+    - `com.amazonaws.<region>.logs` - For CloudWatch Logs
+    - `com.amazonaws.<region>.ssm`, `ssmmessages`, `ec2messages` - For Systems Manager Session Manager
+- **DNS Resolution**: The VPC has DNS hostnames enabled to support VPC endpoint DNS resolution. The PCS endpoint has Private DNS enabled, so PCS API calls automatically resolve to the private endpoint.
+- **Security Groups**: 
+  - PCS VPC endpoint security group allows HTTPS (443) from cluster, login, and compute node security groups
+  - Follow AWS PCS security group requirements for proper Slurm communication between controller, compute nodes, and login nodes
 - **Storage Independence**: Storage stacks are independent and can be deployed, updated, or deleted without affecting the main infrastructure or other storage stacks.
 
 ## Cleaning Up
