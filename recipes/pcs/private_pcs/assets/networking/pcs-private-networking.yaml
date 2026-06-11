@@ -5,7 +5,7 @@ Description: Complete private PCS cluster infrastructure with no internet access
 ### This template orchestrates the deployment of a fully private AWS PCS cluster including:
 ### - VPC and private subnets (no Internet Gateway or NAT Gateway)
 ### - Security groups for cluster nodes and file systems
-### - Optional shared storage (EFS, FSx for Lustre, FSx for NetApp ONTAP)
+### - Optional shared storage (EFS, FSx for Lustre)
 
 ### Stack metadata
 Metadata:
@@ -30,7 +30,6 @@ Metadata:
         Parameters:
           - CreateEFS
           - CreateFSxLustre
-          - CreateFSxONTAP
       - Label:
           default: SSH Access
         Parameters:
@@ -107,14 +106,6 @@ Parameters:
       - 'True'
       - 'False'
 
-  CreateFSxONTAP:
-    Description: Create Amazon FSx for NetApp ONTAP file system
-    Type: String
-    Default: 'False'
-    AllowedValues:
-      - 'True'
-      - 'False'
-
   ClientIpCidr:
     Description: IP address range allowed to SSH to login nodes (e.g., x.x.x.x/32 for a single IP or x.x.x.x/24 for a range). Use 0.0.0.0/0 to allow from anywhere (not recommended).
     Type: String
@@ -142,11 +133,9 @@ Conditions:
   CreateSubnet3: !Equals [!Ref NumberOfSubnets, 3]
   CreateEFSResources: !Equals [!Ref CreateEFS, 'True']
   CreateFSxLustreResources: !Equals [!Ref CreateFSxLustre, 'True']
-  CreateFSxONTAPResources: !Equals [!Ref CreateFSxONTAP, 'True']
   CreateAnyStorage: !Or
     - !Equals [!Ref CreateEFS, 'True']
     - !Equals [!Ref CreateFSxLustre, 'True']
-    - !Equals [!Ref CreateFSxONTAP, 'True']
 
 Resources:
   # VPC and Networking Nested Stack
@@ -177,7 +166,6 @@ Resources:
         ClientIpCidr: !Ref ClientIpCidr
         CreateEFS: !Ref CreateEFS
         CreateFSxLustre: !Ref CreateFSxLustre
-        CreateFSxONTAP: !Ref CreateFSxONTAP
 
   # VPC Endpoint for AWS PCS (created in main stack after both nested stacks)
   PCSVpcEndpoint:
@@ -285,13 +273,6 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-FSxLustreSecurityGroupId'
 
-  FSxONTAPSecurityGroupId:
-    Description: SG ID for FSx for NetApp ONTAP file system (only if created)
-    Condition: CreateFSxONTAPResources
-    Value: !GetAtt SecurityGroups.Outputs.FSxONTAPSecurityGroupId
-    Export:
-      Name: !Sub '${AWS::StackName}-FSxONTAPSecurityGroupId'
-
   CreateEFSParameter:
     Description: Whether to create EFS file system
     Value: !Ref CreateEFS
@@ -303,12 +284,6 @@ Outputs:
     Value: !Ref CreateFSxLustre
     Export:
       Name: !Sub '${AWS::StackName}-CreateFSxLustre'
-
-  CreateFSxONTAPParameter:
-    Description: Whether to create FSx for NetApp ONTAP file system
-    Value: !Ref CreateFSxONTAP
-    Export:
-      Name: !Sub '${AWS::StackName}-CreateFSxONTAP'
 
   PCSVpcEndpointId:
     Description: ID of the AWS PCS VPC endpoint
