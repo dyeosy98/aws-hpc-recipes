@@ -84,28 +84,6 @@ Resources:
       ToPort: 443
       SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow RegisterComputeNodeGroupInstance from compute nodes SG
-
-  # Allow Slurm traffic from cluster SG
-  PCSEndpointFromClusterIngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref PCSVpcEndpointSecurityGroup
-      IpProtocol: tcp
-      FromPort: 6817
-      ToPort: 6818
-      SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
-      Description: Allow Slurm traffic from cluster SG
-
-  # Allow Slurm traffic to cluster SG
-  PCSEndpointToClusterEgressRule:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !Ref PCSVpcEndpointSecurityGroup
-      IpProtocol: tcp
-      FromPort: 6817
-      ToPort: 6818
-      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
-      Description: Allow Slurm traffic to cluster SG
   
   # Cluster Security Group (shared by all nodes)
   # Follows AWS PCS restrictive security group requirements:
@@ -220,7 +198,7 @@ Resources:
       Description: Allow outbound traffic to slurmd and slurmctld from cluster
 
   # Allow RegisterComputeNodeGroupInstance to PCS VPC Endpoint SG
-  LoginNodeSlurmEgressRule:
+  LoginNodeRegisterNodeEgressRule:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !Ref LoginNodeSecurityGroup
@@ -230,27 +208,27 @@ Resources:
       DestinationSecurityGroupId: !Ref PCSVpcEndpointSecurityGroup
       Description: Allow RegisterComputeNodeGroupInstance to PCS VPC Endpoint SG
 
-  # Allow Srun traffic within SG
-  LoginNodeSrunSelfIngressRule:
+  # Allow Srun I/O traffic from compute nodes (for interactive srun)
+  LoginNodeSrunFromComputeIngressRule:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       GroupId: !Ref LoginNodeSecurityGroup
       IpProtocol: tcp
-      FromPort: 60001
-      ToPort: 63000
-      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
-      Description: Allow srun traffic within login SG
+      FromPort: 0
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow srun I/O traffic from compute nodes
 
-  # Allow Srun traffic within SG 
-  LoginNodeSrunSelfEgressRule:
+  # Allow Srun I/O traffic to compute nodes (for interactive srun)
+  LoginNodeSrunToComputeEgressRule:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !Ref LoginNodeSecurityGroup
       IpProtocol: tcp
-      FromPort: 60001
-      ToPort: 63000
-      DestinationSecurityGroupId: !Ref LoginNodeSecurityGroup
-      Description: Allow srun traffic within login SG
+      FromPort: 0
+      ToPort: 65535
+      DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow srun I/O traffic to compute nodes
 
   # Allow SSH access to login nodes from specified IP range
   LoginNodeSSHIngressRule:
@@ -443,7 +421,7 @@ Resources:
       Description: Allow outbound traffic to slurmd and slurmctld from cluster SG
 
   # Allow RegisterComputeNodeGroupInstance to PCS VPC Endpoint SG
-  ComputeNodeSlurmEgressRule:
+  ComputeNodeRegisterNodeEgressRule:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !Ref ComputeNodeSecurityGroup
@@ -470,6 +448,28 @@ Resources:
       IpProtocol: '-1'
       DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow all traffic within SG for EFA and Slurm
+
+  # Allow Srun I/O traffic from login nodes (for interactive srun)
+  ComputeNodeSrunFromLoginIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow srun I/O traffic from login nodes
+
+  # Allow Srun I/O traffic to login nodes (for interactive srun)
+  ComputeNodeSrunToLoginEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      DestinationSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow srun I/O traffic to login nodes
 
   # Allow compute nodes to access EFS (conditional)
   ComputeNodeToEFSEgressRule:

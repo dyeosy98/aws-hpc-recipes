@@ -48,21 +48,21 @@ The templates create:
 
 ### Recommended: Use AWS PCS Sample AMIs
 
-**AWS provides pre-built sample AMIs** with Slurm 24.11 and all required HPC software already installed. These AMIs are regularly updated and tested by AWS.
+**AWS provides pre-built sample AMIs** with Slurm 25.11 and all required HPC software already installed. These AMIs are regularly updated and tested by AWS.
 
 **To find AWS PCS sample AMIs**:
 1. Go to the [AWS PCS AMI Release Notes](https://docs.aws.amazon.com/pcs/latest/userguide/ami-release-notes.html)
-2. Look for AMIs with **Slurm version 24.11** (latest stable version)
+2. Look for AMIs with **Slurm version 25.11** (latest stable version)
 3. Choose the AMI for your region and operating system:
    - Amazon Linux 2023 (recommended for new deployments)
    - Amazon Linux 2
    - RHEL 8/9
    - Ubuntu 20.04/22.04
 
-**Sample AMI naming pattern**: `aws-pcs-sample-x86-64-slurm-24-11-*`
+**Sample AMI naming pattern**: `aws-pcs-sample-x86-64-slurm-25-11-*`
 
 **What's pre-installed in AWS PCS sample AMIs**:
-- ✅ Slurm 24.11 scheduler
+- ✅ Slurm 25.11 scheduler
 - ✅ EFA drivers (Elastic Fabric Adapter)
 - ✅ Lustre client (for FSx for Lustre)
 - ✅ NFS utilities (for EFS and FSx ONTAP)
@@ -188,7 +188,7 @@ Deploy any of the storage stacks as needed. Each storage stack is independent an
 
 Before creating the PCS cluster, deploy launch templates that configure security groups and mount storage on both compute and login nodes. This single stack creates **two launch templates**.
 
-**Prerequisites**: You must have AMI IDs ready - use AWS PCS sample AMIs with Slurm 24.11 (see AMI Requirements section above).
+**Prerequisites**: You must have AMI IDs ready - use AWS PCS sample AMIs with Slurm 25.11 (see AMI Requirements section above).
 
 1. Find the AWS PCS sample AMI IDs for your region from the [AWS PCS AMI Release Notes](https://docs.aws.amazon.com/pcs/latest/userguide/ami-release-notes.html)
 2. Create a new CloudFormation stack using [`pcs-private-launch-template.yaml`](assets/cluster/pcs-private-launch-template.yaml).
@@ -318,7 +318,7 @@ Connect through AWS Site-to-Site VPN or AWS Direct Connect from your on-premises
 
 ## Important Considerations
 
-- **AWS PCS Sample AMIs**: Use AWS-provided sample AMIs with Slurm 24.11 (see AMI Requirements section). These AMIs include EFA drivers, Lustre client, NFS utilities, and HPC software pre-installed. The launch templates do NOT install software - they only mount storage.
+- **AWS PCS Sample AMIs**: Use AWS-provided sample AMIs with Slurm 25.11 (see AMI Requirements section). These AMIs include EFA drivers, Lustre client, NFS utilities, and HPC software pre-installed. The launch templates do NOT install software - they only mount storage.
 - **No Internet Access**: Compute nodes have no internet connectivity. All software packages, container images, and dependencies must be:
   - Pre-installed in AMIs (use AWS PCS sample AMIs or customize them)
   - Available through VPC endpoints (e.g., S3 Gateway Endpoint for accessing S3)
