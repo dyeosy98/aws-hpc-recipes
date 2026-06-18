@@ -638,3 +638,6 @@ Outputs:
     Value: !Join [ ",", [ !GetAtt [ DirectoryService, Outputs.DnsIpAddress1 ], !GetAtt [ DirectoryService, Outputs.DnsIpAddress2 ] ] ]
     Condition: CreateAD
 
+  VpcCidr:
+    Description: VPC CIDR block
+    Value: !Ref CidrBlock
