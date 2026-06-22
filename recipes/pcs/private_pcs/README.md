@@ -148,7 +148,7 @@ Before creating the PCS cluster, deploy launch templates that configure security
    - `ComputeInstanceType`: EC2 instance type for compute nodes (e.g., c6i.32xlarge, hpc7a.96xlarge)
    - `ComputeAmiId`: AWS PCS sample AMI ID for compute nodes (e.g., `ami-0xxxxxxxxxxxxx`)
 
-**Key Differences Between Launch Templates**:
+<ins>Key Differences Between Launch Templates</ins>:
 
 | Feature | Compute Node Template | Login Node Template |
 | ------- | --------------------- | ------------------- |
@@ -174,7 +174,6 @@ Deploy the [`pcs-private-cluster.yaml`](assets/cluster/pcs-private-cluster.yaml)
    - **ComputeNodeInstanceType**: Instance type for compute nodes (e.g., hpc8a.96xlarge)
    - **ComputeNodeMinCount**: Minimum number of compute nodes (0-4)
    - **ComputeNodeMaxCount**: Maximum number of compute nodes (1-4)
-   - **ComputeNodeSpotBidPercentage**: Set to 0 for on-demand, or 100 to use Spot instances at on-demand price
 
 After deployment, you can access the cluster via one of the access patterns below.
 

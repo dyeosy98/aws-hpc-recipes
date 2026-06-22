@@ -40,7 +40,6 @@ Metadata:
           - ComputeNodeInstanceType
           - ComputeNodeMinCount
           - ComputeNodeMaxCount
-          - ComputeNodeSpotBidPercentage
 
 Parameters:
   NetworkingStackName:
@@ -117,15 +116,7 @@ Parameters:
     MinValue: 1
     MaxValue: 4
 
-  ComputeNodeSpotBidPercentage:
-    Description: Bid percentage for Spot instances (0 to disable Spot, 100 for on-demand price). If using Spot, set to a percentage (e.g., 100 = pay up to on-demand price)
-    Type: Number
-    Default: 0
-    MinValue: 0
-    MaxValue: 100
-
 Conditions:
-  UseSpotInstances: !Not [!Equals [!Ref ComputeNodeSpotBidPercentage, 0]]
   IsAccountingEnabled: !Equals [!Ref EnableAccounting, 'enabled']
   SetAccountingPolicy: !Not [!Equals [!Ref AccountingPolicyEnforcement, 'none']]
 
@@ -198,10 +189,6 @@ Resources:
         TemplateId:
           Fn::ImportValue: !Sub '${LaunchTemplateStackName}-ComputeLaunchTemplateId'
         Version: 1
-      SpotOptions: !If
-        - UseSpotInstances
-        - AllocationStrategy: CAPACITY_OPTIMIZED
-        - !Ref AWS::NoValue
       IamInstanceProfileArn: !GetAtt PCSInstanceProfile.Arn
 
   # Compute Queue
