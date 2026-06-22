@@ -6,6 +6,8 @@ This recipe provides CloudFormation templates to create the infrastructure for d
 
 ### Architecture
 
+![Architecture diagram for private PCS cluster without internet access](PCSPrivateNetworkingArchitecture-withbastion.drawio.png)
+
 The templates in this recipe create:
 
 - [**Networking stack**](assets/networking/pcs-private-networking.yaml): 
@@ -13,7 +15,7 @@ The templates in this recipe create:
    - A PCS VPC interface endpoint
    - Required EFA-enabled security groups for cluster nodes, storage, and the PCS VPC endpoint
 
-- [**Storage stack (optional, can be deployed independently)**](assets/storage):
+- [**Storage stacks (optional, can be deployed independently)**](assets/storage):
    - An Amazon EFS file system with mount targets
    - An Amazon FSx for Lustre high-performance file system
 
@@ -27,9 +29,6 @@ The templates in this recipe create:
       - A login node group (1 static instance)
       - A compute node group (by default, 0 to 4 dynamic hpc8a.96xlarge instances)
       - A queue named "compute"
-
-An example diagram with the required security group rules is fleshed out below:
-![Architecture diagram for private PCS cluster without internet access](PCSPrivateNetworkingArchitecture-withbastion.drawio.png)
 
 ### Considerations
 
@@ -87,16 +86,16 @@ Save the private key securely - you'll need it to SSH into login nodes.
 ### Step 1: Deploy Networking Infrastructure
 
 Deploy the [`pcs-private-networking.yaml`](assets/networking/pcs-private-networking.yaml) template to create the VPC, subnets, and security groups. Parameters include:
-   - **VpcCIDR**: CIDR block for the VPC (e.g., 10.0.0.0/16)
-   - **NumberOfSubnets**: Number of private subnets to create (1, 2, or 3)
-   - **Subnet1AZ/CIDR**: Availability Zone and CIDR for the first subnet
-   - **Subnet2AZ/CIDR (Optional)**: Availability Zone and CIDR for the second subnet
-   - **Subnet3AZ/CIDR (Optional)**: Availability Zone and CIDR for the third subnet
-   - **CreateEFS**: Set to 'True' if you plan to deploy EFS (creates security group)
-   - **CreateFSxLustre**: Set to 'True' if you plan to deploy FSx for Lustre (creates security group)
-   - **ClientIpCidr**: IP range allowed to SSH to login nodes
-   - **HpcRecipesS3Bucket**: S3 bucket containing the templates
-   - **HpcRecipesBranch**: Branch/version of the templates
+   - `VpcCIDR`: CIDR block for the VPC (e.g., 10.0.0.0/16)
+   - `NumberOfSubnets`: Number of private subnets to create (1, 2, or 3)
+   - `Subnet1AZ/CIDR`: Availability Zone and CIDR for the first subnet
+   - `Subnet2AZ/CIDR (Optional)`: Availability Zone and CIDR for the second subnet
+   - `Subnet3AZ/CIDR (Optional)`: Availability Zone and CIDR for the third subnet
+   - `CreateEFS`: Set to 'True' if you plan to deploy EFS (creates security group)
+   - `CreateFSxLustre`: Set to 'True' if you plan to deploy FSx for Lustre (creates security group)
+   - `ClientIpCidr`: IP range allowed to SSH to login nodes
+   - `HpcRecipesS3Bucket`: S3 bucket containing the templates
+   - `HpcRecipesBranch`: Branch/version of the templates
 
 ### Step 2: Deploy Storage Infrastructure (Optional)
 
@@ -105,21 +104,21 @@ Deploy any of the storage stacks as needed. Each storage stack is independent an
 #### Deploy Amazon EFS (if CreateEFS was set to 'True' in Step 1)
 
 Deploy the [`pcs-private-efs.yaml`](assets/storage/pcs-private-efs.yaml) template to create the EFS file system. Parameters include:
-   - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
-   - **SubnetIds**: Select all the private subnets from the dropdown (EFS will create a mount target in each)
-   - **EFSPerformanceMode**: generalPurpose or maxIO
-   - **EFSThroughputMode**: bursting or elastic
+   - `NetworkingStackName`: Name of the pcs-private-networking stack from Step 1
+   - `SubnetIds`: Select all the private subnets from the dropdown (EFS will create a mount target in each)
+   - `EFSPerformanceMode`: generalPurpose or maxIO
+   - `EFSThroughputMode`: bursting or elastic
 
 #### Deploy FSx for Lustre (if CreateFSxLustre was set to 'True' in Step 1)
 
 Deploy the [`pcs-private-fsxl.yaml`](assets/storage/pcs-private-fsxl.yaml) template to create the EFS file system. Parameters include:
-   - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
-   - **SubnetId**: Select one of the private subnets from the dropdown
-   - **FSxLustreStorageCapacity**: Storage capacity in GiB (minimum 1200, increments of 2400)
-   - **FSxLustrePerUnitStorageThroughput**: Throughput in MB/s/TiB (125, 250, 500, or 1000)
-   - **FSxLustreDataCompressionType**: Data compression (NONE or LZ4 for automatic compression)
+   - `NetworkingStackName`: Name of the pcs-private-networking stack from Step 1
+   - `SubnetId`: Select one of the private subnets from the dropdown
+   - `FSxLustreStorageCapacity`: Storage capacity in GiB (minimum 1200, increments of 2400)
+   - `FSxLustrePerUnitStorageThroughput`: Throughput in MB/s/TiB (125, 250, 500, or 1000)
+   - `FSxLustreDataCompressionType`: Data compression (NONE or LZ4 for automatic compression)
 
-> ![NOTE]
+> [!NOTE]
 > This template uses FSx for Lustre PERSISTENT_2 deployment type, which is available in most commercial AWS regions, but may not be available in GovCloud regions.
 
 ### Step 3: Create Launch Templates
@@ -129,25 +128,25 @@ Before creating the PCS cluster, deploy launch templates that configure security
 1. Find the AWS PCS sample AMI IDs for your region from the [AWS PCS AMI Release Notes](https://docs.aws.amazon.com/pcs/latest/userguide/ami-release-notes.html) or have your custom AMI ID ready.
 
 2. Deploy the [`pcs-private-launch-template.yaml`](assets/cluster/pcs-private-launch-template.yaml) template. Parameters include:
-   - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
-   - **OperatingSystem**: Select your OS - must match your AMI
+   - `NetworkingStackName`: Name of the pcs-private-networking stack from Step 1
+   - `OperatingSystem`: Select your OS - must match your AMI
    
    **For SSH Access**:
-   - **KeyName**: EC2 key pair for SSH access to login nodes (select from dropdown)
+   - `KeyName`: EC2 key pair for SSH access to login nodes (select from dropdown)
    
    **For Storage Configuration** (all optional):
-   - **EFSStackName**: Name of the EFS stack if you deployed EFS
-   - **EFSMountDirectory**: Mount point for EFS (e.g., /home)
-   - **FSxLustreStackName**: Name of the FSx Lustre stack if you deployed FSx Lustre
-   - **FSxLMountDirectory**: Mount point for FSx Lustre (e.g., /fsx)
+   - `EFSStackName`: Name of the EFS stack if you deployed EFS
+   - `EFSMountDirectory`: Mount point for EFS (e.g., /home)
+   - `FSxLustreStackName`: Name of the FSx Lustre stack if you deployed FSx Lustre
+   - `FSxLMountDirectory`: Mount point for FSx Lustre (e.g., /fsx)
 
    **For Login Node Configuration**:
-   - **LoginInstanceType**: EC2 instance type for login nodes (e.g., c6i.8xlarge)
-   - **LoginAmiId**: AWS PCS sample AMI ID for login nodes (e.g., `ami-0xxxxxxxxxxxxx`)
+   - `LoginInstanceType`: EC2 instance type for login nodes (e.g., c6a.4xlarge)
+   - `LoginAmiId`: AWS PCS sample AMI ID for login nodes (e.g., `ami-0xxxxxxxxxxxxx`)
    
    **For Compute Node Configuration**:
-   - **ComputeInstanceType**: EC2 instance type for compute nodes (e.g., c6i.32xlarge, hpc7a.96xlarge)
-   - **ComputeAmiId**: AWS PCS sample AMI ID for compute nodes (e.g., `ami-0xxxxxxxxxxxxx`)
+   - `ComputeInstanceType`: EC2 instance type for compute nodes (e.g., c6i.32xlarge, hpc7a.96xlarge)
+   - `ComputeAmiId`: AWS PCS sample AMI ID for compute nodes (e.g., `ami-0xxxxxxxxxxxxx`)
 
 **Key Differences Between Launch Templates**:
 
@@ -221,5 +220,3 @@ To delete the resources created by this recipe (in reverse order of deployment):
 - [Access AWS Parallel Computing Service using an interface endpoint (AWS PrivateLink)](https://docs.aws.amazon.com/pcs/latest/userguide/vpc-interface-endpoints.html)
 - [Amazon EFS Using VPC security groups](https://docs.aws.amazon.com/efs/latest/ug/network-access.html)
 - [Amazon FSx for Lustre File system access control with Amazon VPC](https://docs.aws.amazon.com/fsx/latest/LustreGuide/limit-access-security-groups.html)
-
-This architecture is suitable for highly secure environments where compute nodes must not have any internet access. All AWS service communication happens through VPC endpoints (AWS PrivateLink).
