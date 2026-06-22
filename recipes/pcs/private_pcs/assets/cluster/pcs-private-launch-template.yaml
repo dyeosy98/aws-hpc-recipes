@@ -74,14 +74,10 @@ Parameters:
   OperatingSystem:
     Description: Operating system for the instances (determines package manager and commands)
     Type: String
-    Default: AmazonLinux2023
+    Default: Amazon Linux 2023
     AllowedValues:
-      - AmazonLinux2023
-      - AmazonLinux2
-      - RHEL8
-      - RHEL9
-      - Ubuntu2004
-      - Ubuntu2204
+      - Amazon Linux 2023
+      - Ubuntu
 
   KeyName:
     Description: EC2 Key Pair for SSH access to login nodes
@@ -90,9 +86,7 @@ Parameters:
 Conditions:
   UseEFS: !Not [!Equals [!Ref EFSStackName, '']]
   UseFSxLustre: !Not [!Equals [!Ref FSxLustreStackName, '']]
-  IsUbuntu: !Or
-    - !Equals [!Ref OperatingSystem, 'Ubuntu2004']
-    - !Equals [!Ref OperatingSystem, 'Ubuntu2204']
+  IsUbuntu: !Equals [!Ref OperatingSystem, 'Ubuntu']
 
 Resources:
   # Compute Node Launch Template
@@ -115,7 +109,7 @@ Resources:
 
               #!/bin/bash
               set -e
-              exec > >(tee /var/log/pcs-userdata.log) 2>&1
+              exec > >(tee /var/log/pcs-lt-userdata-setup.log) 2>&1
 
               echo "Compute node setup starting at $(date)"
 
