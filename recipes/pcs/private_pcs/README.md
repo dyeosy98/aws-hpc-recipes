@@ -4,22 +4,19 @@
 
 This recipe provides CloudFormation templates to create the infrastructure for deploying AWS Parallel Computing Service (PCS) clusters in fully isolated, internet-free environments.
 
-<details open>
-<summary>**Architecture**</summary>
+### Architecture
 
 The templates in this recipe create:
+
 - A fully private VPC with 1-3 subnets across user-selected Availability Zones
+- VPC Interface Endpoint for AWS PCS to enable private API access to PCS control plane via AWS PrivateLink
 - No Internet Gateway or NAT Gateway (complete isolation)
-- **VPC Interface Endpoint for AWS PCS** - Enables private API access to PCS control plane via AWS PrivateLink
 - EFA-enabled security groups for PCS cluster nodes
 - Security group for PCS VPC endpoint (allows HTTPS from cluster nodes)
 - Security groups for shared storage (EFS, FSx for Lustre, FSx for NetApp ONTAP)
 - Optional independent shared storage stacks
 
-</details>
-
-<details>
-<summary>Important considerations</summary>
+### Considerations
 
 - **Software installation**: Compute nodes have no internet connectivity. All software packages, container images, and dependencies must be:
   - Pre-installed in AMIs (use AWS PCS sample AMIs or customize them)
@@ -38,7 +35,6 @@ The templates in this recipe create:
   - PCS VPC endpoint security group allows HTTPS (443) from cluster, login, and compute node security groups
   - Follow AWS PCS security group requirements for proper Slurm communication between controller, compute nodes, and login nodes
 - **Storage Independence**: Storage stacks are independent and can be deployed, updated, or deleted without affecting the main infrastructure or other storage stacks.
-</details>
 
 ## Templates
 
@@ -57,46 +53,38 @@ The templates in this recipe create:
 - [`pcs-private-launch-template.yaml`](assets/cluster/pcs-private-launch-template.yaml) - EC2 Launch Templates with security groups and user data to mount EFS and FSx Lustre storage
 - [`pcs-private-cluster.yaml`](assets/cluster/pcs-private-cluster.yaml) - required IAM role and instance profiles, AWS PCS cluster with login node group (1 static instance), compute node group, a queue named "compute".
 
-## Pre-requisites
+## Usage 
 
-### 1. Amazon Machine Images (AMIs) for AWS PCS
+### 0. Pre-requisites
+
+#### 1. Amazon Machine Images (AMIs) for AWS PCS
 
 When deploying the launch template (Step 3), you will need to input as a parameter a **`LoginAmiId`** and a **`ComputeAmiId`**.
 
-#### Recommended: Use AWS PCS Sample AMIs
+- **Recommended: Use AWS PCS Sample AMIs**: AWS provides pre-built sample AMIs based on Amazon Liunx 2023, with Slurm 25.11 and generally required HPC software already installed. These AMIs are regularly updated and tested by AWS. Nevertheless, sample AMIs are for demonstration purposes and are not recommended for production workloads.
 
-AWS provides pre-built sample AMIs based on Amazon Liunx 2023, with Slurm 25.11 and generally required HPC software already installed. These AMIs are regularly updated and tested by AWS. Nevertheless, sample AMIs are for demonstration purposes and are not recommended for production workloads.
+   What's pre-installed in AWS PCS sample AMIs:
+   - ✅ AWS PCS agent
+   - ✅ Slurm scheduler
+   - ✅ Elastic Fabric Adapter (EFA) drivers
+   - ✅ Lustre client (for FSx for Lustre)
+   - ✅ NFS utilities (for Elastic File System and FSx for NetApp ONTAP)
+   - ✅ HPC libraries (OpenMPI, Intel MPI)
+   - ✅ Common compilers and development tools
 
-**What's pre-installed in AWS PCS sample AMIs:**
-- ✅ AWS PCS agent
-- ✅ Slurm scheduler
-- ✅ Elastic Fabric Adapter (EFA) drivers
-- ✅ Lustre client (for FSx for Lustre)
-- ✅ NFS utilities (for Elastic File System and FSx for NetApp ONTAP)
-- ✅ HPC libraries (OpenMPI, Intel MPI)
-- ✅ Common compilers and development tools
+   To find AWS PCS sample AMIs, see [AWS PCS Sample AMIs](https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_samples.html).
 
-To find AWS PCS sample AMIs, see [AWS PCS Sample AMIs](https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_samples.html).
+- **Alternative: Customizing AWS PCS Sample AMIs**: To create custom AMIs based on AWS PCS sample AMIs, see [Custom AMIs for AWS PCS](https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_custom.html).
 
-<details>
-
-<summary>Alternative: Customizing AWS PCS Sample AMIs</summary>
-
-To create custom AMIs based on AWS PCS sample AMIs, see [Custom AMIs for AWS PCS](https://docs.aws.amazon.com/pcs/latest/userguide/working-with_ami_custom.html).
-
-</details>
-
-### 2. EC2 key pair
+#### 2. EC2 key pair
 
 When deploying the launch template (Step 3), you will need to input as a parameter a **`LoginAmiId`** and a **`ComputeAmiId`**.
 
 This is for SSH access to login nodes. You can create one via:
-   - AWS Console: EC2 → Key Pairs → Create key pair
-   - AWS CLI: `aws ec2 create-key-pair --key-name <key name> --region <region>`
+   - **AWS Console**: EC2 → Key Pairs → Create key pair
+   - **AWS CLI**: `aws ec2 create-key-pair --key-name <key name> --region <region>`
    
 Save the private key securely - you'll need it to SSH into login nodes.
-
-## Usage
 
 ### Step 1: Deploy Networking Infrastructure
 
@@ -134,7 +122,7 @@ Deploy the [`pcs-private-fsxl.yaml`](assets/storage/pcs-private-fsxl.yaml) templ
    - **FSxLustreDataCompressionType**: Data compression (NONE or LZ4 for automatic compression)
 
 > ![NOTE]
-> This template uses FSx for Lustre PERSISTENT_2 deployment type, which is available in most commercial AWS regions but may not be available in GovCloud regions.
+> This template uses FSx for Lustre PERSISTENT_2 deployment type, which is available in most commercial AWS regions, but may not be available in GovCloud regions.
 
 ### Step 3: Create Launch Templates
 
@@ -173,7 +161,7 @@ Before creating the PCS cluster, deploy launch templates that configure security
 | Typical Instance Types | c6in.32xlarge, hpc7a.96xlarge | c6a.4xlarge, g4dn.4xlarge |
 
 > [!NOTE]
-> The launch templates include user data that: mounts configured storage at instance launch (EFS, FSx Lustre) and logs all setup activities to `/var/log/pcs-lt-userdata-setup.log`. The launch templates do NOT install software - required software should be pre-installed in the AMI
+> The launch templates include user data that: mounts configured storage at instance launch (EFS, FSx Lustre) and logs all setup activities to `/var/log/pcs-lt-userdata-setup.log`. The launch templates do NOT install software - required software should be pre-installed in the AMI.
 
 ### Step 4: Deploy the PCS Cluster
 
@@ -193,8 +181,7 @@ Deploy the [`pcs-private-cluster.yaml`](assets/cluster/pcs-private-cluster.yaml)
 
 After deployment, you can access the cluster via one of the access patterns below.
 
-<detail>
-<summary>**Access Patterns**</summary>
+## Access Patterns
 
 Since this is a private cluster with no internet access, you'll need one of these access patterns:
 
@@ -218,12 +205,9 @@ Use AWS Systems Manager Session Manager to establish sessions to login nodes wit
 ### Option 3: VPN or Direct Connect
 Connect through AWS Site-to-Site VPN or AWS Direct Connect from your on-premises network.
 
-</detail>
+## Further information
 
-## Other information
-
-<details>
-<summary>Cleaning Up</summary>
+### Cleaning Up
 
 To delete the resources created by this recipe (in reverse order of deployment):
 
@@ -233,14 +217,7 @@ To delete the resources created by this recipe (in reverse order of deployment):
 4. Delete the main networking stack (pcs-private-networking).
 5. If you created any additional resources (bastion hosts, VPN connections, etc.), delete those as well.
 
-> [!NOTE]
-> Stacks must be deleted in the correct order due to dependencies. The cluster depends on launch templates, which depend on networking and storage resources.
-
-</details>
-
-<details>
-
-<summary>References</summary>
+### References
 
 - [AWS PCS VPC and subnet requirements and considerations](https://docs.aws.amazon.com/pcs/latest/userguide/working-with_networking_vpc-requirements.html)
 - [Access AWS Parallel Computing Service using an interface endpoint (AWS PrivateLink)](https://docs.aws.amazon.com/pcs/latest/userguide/vpc-interface-endpoints.html)
@@ -248,5 +225,3 @@ To delete the resources created by this recipe (in reverse order of deployment):
 - [Amazon FSx for Lustre File system access control with Amazon VPC](https://docs.aws.amazon.com/fsx/latest/LustreGuide/limit-access-security-groups.html)
 
 This architecture is suitable for highly secure environments where compute nodes must not have any internet access. All AWS service communication happens through VPC endpoints (AWS PrivateLink).
-
-</details>
