@@ -1,20 +1,35 @@
-# Building a Private PCS Cluster with No Internet Access
+# Building a Private PCS Cluster with No Internet Access and Least Privilege Networking Policies
 
 ## Information
 
-This recipe provides CloudFormation templates to create the infrastructure for deploying AWS Parallel Computing Service (PCS) clusters in fully isolated, internet-free environments.
+This recipe provides CloudFormation templates to create the infrastructure for deploying AWS Parallel Computing Service (PCS) clusters in fully isolated, internet-free environments, with least privilege networking policies.
 
 ### Architecture
 
 The templates in this recipe create:
 
-- A fully private VPC with 1-3 subnets across user-selected Availability Zones
-- VPC Interface Endpoint for AWS PCS to enable private API access to PCS control plane via AWS PrivateLink
-- No Internet Gateway or NAT Gateway (complete isolation)
-- EFA-enabled security groups for PCS cluster nodes
-- Security group for PCS VPC endpoint (allows HTTPS from cluster nodes)
-- Security groups for shared storage (EFS, FSx for Lustre, FSx for NetApp ONTAP)
-- Optional independent shared storage stacks
+- [**Networking stack**](assets/networking/pcs-private-networking.yaml): 
+   - A fully private VPC with 1-3 subnets across user-selected AZs
+   - A PCS VPC interface endpoint
+   - Required EFA-enabled security groups for cluster nodes, storage, and the PCS VPC endpoint
+
+- [**Storage stack (optional, can be deployed independently)**](assets/storage):
+   - An Amazon EFS file system with mount targets
+   - An Amazon FSx for Lustre high-performance file system
+
+- [**Launch template stack**](assets/cluster/pcs-private-launch-template.yaml):
+   - An EC2 launch template for the cluster login node
+   - An EC2 launch template for the cluster compute nodes
+
+- [**PCS cluster stack**](assets/cluster/pcs-private-cluster.yaml):
+   - Required IAM role and instance profiles
+   - AWS PCS cluster with:
+      - A login node group (1 static instance)
+      - A compute node group (by default, 0 to 4 dynamic hpc8a.96xlarge instances)
+      - A queue named "compute"
+
+An example diagram with the required security group rules is fleshed out below:
+![Architecture diagram for private PCS cluster without internet access](PCSPrivateNetworkingArchitecture-withbastion.drawio.png)
 
 ### Considerations
 
@@ -35,23 +50,6 @@ The templates in this recipe create:
   - PCS VPC endpoint security group allows HTTPS (443) from cluster, login, and compute node security groups
   - Follow AWS PCS security group requirements for proper Slurm communication between controller, compute nodes, and login nodes
 - **Storage Independence**: Storage stacks are independent and can be deployed, updated, or deleted without affecting the main infrastructure or other storage stacks.
-
-## Templates
-
-### Networking Stack
-- [`pcs-private-networking.yaml`](assets/networking/pcs-private-networking.yaml) - Main template that orchestrates the deployment of VPC, subnets, security groups, and PCS VPC endpoint via nested stacks:
-  - [`pcs-private-vpc.yaml`](assets/networking/pcs-private-vpc.yaml) - VPC and private subnets (no Internet Gateway or NAT Gateway)
-  - [`pcs-private-sgs.yaml`](assets/networking/pcs-private-sgs.yaml) - EFA-enabled security groups for cluster nodes, storage, and PCS VPC endpoint
-  - **PCS VPC Endpoint** - Created in main stack, enables private access to AWS PCS API
-
-### Storage Stacks (Optional, deploy independently)
-- [`pcs-private-efs.yaml`](assets/storage/pcs-private-efs.yaml) - Amazon EFS file system with mount targets
-- [`pcs-private-fsxl.yaml`](assets/storage/pcs-private-fsxl.yaml) - Amazon FSx for Lustre high-performance file system
-- [`pcs-private-fsxn.yaml`](assets/storage/pcs-private-fsxn.yaml) - Amazon FSx for NetApp ONTAP multi-protocol file system
-
-### Cluster Resources
-- [`pcs-private-launch-template.yaml`](assets/cluster/pcs-private-launch-template.yaml) - EC2 Launch Templates with security groups and user data to mount EFS and FSx Lustre storage
-- [`pcs-private-cluster.yaml`](assets/cluster/pcs-private-cluster.yaml) - required IAM role and instance profiles, AWS PCS cluster with login node group (1 static instance), compute node group, a queue named "compute".
 
 ## Usage 
 
