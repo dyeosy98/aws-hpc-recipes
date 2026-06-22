@@ -163,17 +163,17 @@ Before creating the PCS cluster, deploy launch templates that configure security
 ### Step 4: Deploy the PCS Cluster
 
 Deploy the [`pcs-private-cluster.yaml`](assets/cluster/pcs-private-cluster.yaml) template to create your cluster with login and compute node groups. Parameters include:
-   - **NetworkingStackName**: Name of the pcs-private-networking stack from Step 1
-   - **LaunchTemplateStackName**: Name of the pcs-private-launch-template stack from Step 3
-   - **ClusterName**: Name for your PCS cluster (e.g., private-hpc-cluster)
-   - **ClusterSize**: Size of the cluster - SMALL (up to 100 instances), MEDIUM (up to 500), or LARGE (up to 5000)
-   - **SlurmVersion**: Slurm version (must match your AMI - typically 25.11)
-   - **EnableAccounting**: Enable Slurm accounting database (default: enabled)
-   - **AccountingPolicyEnforcement**: Slurm accounting policies to enforce (default: associations,limits,safe)
-   - **LoginNodeInstanceType**: Instance type for login nodes (e.g., c6a.xlarge)
-   - **ComputeNodeInstanceType**: Instance type for compute nodes (e.g., hpc8a.96xlarge)
-   - **ComputeNodeMinCount**: Minimum number of compute nodes (0-4)
-   - **ComputeNodeMaxCount**: Maximum number of compute nodes (1-4)
+   - `NetworkingStackName`: Name of the pcs-private-networking stack from Step 1
+   - `LaunchTemplateStackName`: Name of the pcs-private-launch-template stack from Step 3
+   - `ClusterName`: Name for your PCS cluster (e.g., private-hpc-cluster)
+   - `ClusterSize`: Size of the cluster - SMALL (up to 100 instances), MEDIUM (up to 500), or LARGE (up to 5000)
+   - `SlurmVersion`: Slurm version (must match your AMI - typically 25.11)
+   - `EnableAccounting`: Enable Slurm accounting database (default: enabled)
+   - `AccountingPolicyEnforcement`: Slurm accounting policies to enforce (default: associations,limits,safe)
+   - `LoginNodeInstanceType`: Instance type for login nodes (e.g., c6a.xlarge)
+   - `ComputeNodeInstanceType`: Instance type for compute nodes (e.g., hpc8a.96xlarge)
+   - `ComputeNodeMinCount`: Minimum number of compute nodes (0-4)
+   - `ComputeNodeMaxCount`: Maximum number of compute nodes (1-4)
 
 After deployment, you can access the cluster via one of the access patterns below.
 
