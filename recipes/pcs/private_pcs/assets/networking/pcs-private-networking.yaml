@@ -117,9 +117,6 @@ Parameters:
     Description: HPC Recipes for AWS S3 bucket
     Type: String
     Default: aws-hpc-recipes
-    AllowedValues:
-      - aws-hpc-recipes
-      - 688462158650-private-pcs-scripts
 
   HpcRecipesBranch:
     Description: HPC Recipes for AWS version/branch

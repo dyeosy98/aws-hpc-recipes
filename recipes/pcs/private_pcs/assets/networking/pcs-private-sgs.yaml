@@ -90,37 +90,48 @@ Resources:
           Value: !Sub '${StackName}-PCS-SG'
 
   # Allow Slurm traffic to slurmctld from login node SG
-  PCSClusterFromLoginIngressRule:
+  PCSClusterFromLoginIngressRule6817:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       GroupId: !Ref PCSClusterSecurityGroup
       IpProtocol: tcp
       FromPort: 6817
-      ToPort: 6819
+      ToPort: 6817
       SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
       Description: Allow Slurm traffic to slurmctld from login node SG
 
+  # Allow Slurm traffic to slurmctld from login node SG
+  PCSClusterFromLoginIngressRule6819:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PCSClusterSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6819
+      ToPort: 6819
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow Slurm traffic to slurmdbd from login node SG
+
   # Allow Slurm traffic to slurmctld from compute node SG
-  PCSClusterFromComputeIngressRule:
+  PCSClusterFromComputeIngressRule6817:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       GroupId: !Ref PCSClusterSecurityGroup
       IpProtocol: tcp
       FromPort: 6817
+      ToPort: 6817
+      SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow Slurm traffic to slurmctld from compute node SG
+
+  # Allow Slurm traffic to slurmdbd from compute node SG
+  PCSClusterFromComputeIngressRule6819:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PCSClusterSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6819
       ToPort: 6819
       SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
-      Description: Allow outbound traffic from slurmctld to slurmd running on EC2 instances within cluster (required for PCS cluster communication)
-
-  # Allow Slurm traffic to slurmctld from cluster SG - MAY NOT NEED
-  PCSClusterFromClusterIngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref PCSClusterSecurityGroup
-      IpProtocol: tcp
-      FromPort: 6817
-      ToPort: 6818
-      SourceSecurityGroupId: !Ref PCSVpcEndpointSecurityGroup
-      Description: Allow Slurm traffic to slurmctld from PCS VPC endpoint SG
+      Description: Allow Slurm traffic to slurmdbd from compute node SG
 
   # Allow Slurm traffic from slurmctld to login node SG
   PCSClusterToLoginEgressRule:
@@ -144,17 +155,6 @@ Resources:
       DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow Slurm traffic from slurmctld to compute node SG
 
-  # Allow Slurm traffic from slurmctld to PCS VPC Endpoint SG - MAY NOT NEED
-  PCSClusterToClusterEgressRule:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !Ref PCSClusterSecurityGroup
-      IpProtocol: tcp
-      FromPort: 6817
-      ToPort: 6818
-      DestinationSecurityGroupId: !Ref PCSVpcEndpointSecurityGroup
-      Description: Allow Slurm traffic from slurmctld to PCS VPC endpoint SG 
-
   # Login Node Security Group
   LoginNodeSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -175,18 +175,29 @@ Resources:
       FromPort: 6818
       ToPort: 6818
       SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
-      Description: Allow inbound traffic to slurmd from slurmctld in cluster SG
+      Description: Allow Slurm traffic from slurmctld 
 
   # Allow outbound traffic to Slurmctld
-  LoginNodeSlurmEgressRule:
+  LoginNodeSlurmEgressRule6817:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !Ref LoginNodeSecurityGroup
       IpProtocol: tcp
       FromPort: 6817
+      ToPort: 6817
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow Slurm traffic to slurmctld 
+
+  # Allow outbound traffic to Slurmdbd
+  LoginNodeSlurmEgressRule6819:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6819
       ToPort: 6819
       DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
-      Description: Allow outbound traffic to slurmd and slurmctld from cluster
+      Description: Allow Slurm traffic to slurmdbd
 
   # Allow RegisterComputeNodeGroupInstance to PCS VPC Endpoint SG
   LoginNodeRegisterNodeEgressRule:
@@ -199,29 +210,7 @@ Resources:
       DestinationSecurityGroupId: !Ref PCSVpcEndpointSecurityGroup
       Description: Allow RegisterComputeNodeGroupInstance to PCS VPC Endpoint SG
 
-  # Allow Srun I/O traffic from login nodes (for interactive srun)
-  LoginNodeSrunSelfIngressRule:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref LoginNodeSecurityGroup
-      IpProtocol: tcp
-      FromPort: 60001
-      ToPort: 63000
-      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
-      Description: Allow srun I/O traffic within login nodes
-
-  # Allow Srun I/O traffic to login nodes (for interactive srun)
-  LoginNodeSrunSelfEgressRule:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !Ref LoginNodeSecurityGroup
-      IpProtocol: tcp
-      FromPort: 60001
-      ToPort: 63000
-      DestinationSecurityGroupId: !Ref LoginNodeSecurityGroup
-      Description: Allow srun I/O traffic within login nodes
-      
-  # Allow Srun I/O traffic from compute nodes (for interactive srun)
+  # Allow Srun I/O traffic from compute nodes (for interactive srun) - SHOULD BE 60001-63000
   LoginNodeSrunFromComputeIngressRule:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -232,7 +221,7 @@ Resources:
       SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow srun I/O traffic from compute nodes
 
-  # Allow Srun I/O traffic to compute nodes (for interactive srun)
+  # Allow Srun I/O traffic to compute nodes (for interactive srun) - SHOULD BE 60001-63000
   LoginNodeSrunToComputeEgressRule:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
@@ -309,18 +298,29 @@ Resources:
       FromPort: 6818
       ToPort: 6818
       SourceSecurityGroupId: !Ref PCSClusterSecurityGroup
-      Description: Allow inbound traffic to slurmd from slurmctld in cluster SG
+      Description: Allow Slurm traffic from slurmctld 
 
   # Allow outbound traffic to Slurmctld
-  ComputeNodeSlurmEgressRule:
+  ComputeNodeSlurmEgressRule6817:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !Ref ComputeNodeSecurityGroup
       IpProtocol: tcp
       FromPort: 6817
+      ToPort: 6817
+      DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
+      Description: Allow Slurm traffic to slurmctld 
+
+  # Allow outbound traffic to Slurmctld
+  ComputeNodeSlurmEgressRule6819:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6819
       ToPort: 6819
       DestinationSecurityGroupId: !Ref PCSClusterSecurityGroup
-      Description: Allow outbound traffic to slurmd and slurmctld from cluster SG
+      Description: Allow Slurm traffic to slurmdbd
 
   # Allow RegisterComputeNodeGroupInstance to PCS VPC Endpoint SG
   ComputeNodeRegisterNodeEgressRule:
@@ -351,7 +351,7 @@ Resources:
       DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow all traffic within SG for EFA and Slurm
 
-  # Allow Srun I/O traffic from login nodes (for interactive srun)
+  # Allow Srun I/O traffic from login nodes (for interactive srun) - SHOULD BE 60001-63000
   ComputeNodeSrunFromLoginIngressRule:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -362,7 +362,7 @@ Resources:
       SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
       Description: Allow srun I/O traffic from login nodes
 
-  # Allow Srun I/O traffic to login nodes (for interactive srun)
+  # Allow Srun I/O traffic to login nodes (for interactive srun) - SHOULD BE 60001-63000
   ComputeNodeSrunToLoginEgressRule:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
