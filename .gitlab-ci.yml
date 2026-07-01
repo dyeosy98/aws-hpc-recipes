@@ -40,7 +40,7 @@ deploy-job:
 
 mirror-to-github:
   stage: mirror
-  image: alpine:latest
+  image: alpine:3.21
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   before_script:
@@ -48,7 +48,6 @@ mirror-to-github:
     - eval $(ssh-agent -s)
     - echo "${GITHUB_SSH_PRIVATE_KEY}" | tr -d '\r' | sed -e 's/^[ \t]*//' | sed -e 's/[ \t]*$//' > private_key.pem
     - chmod 600 private_key.pem
-    - ssh-keygen -p -f private_key.pem -m pem -P "" -N ""
     - ssh-add private_key.pem
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
@@ -66,7 +65,7 @@ mirror-to-github:
 
 pull-from-github:
   stage: github-pull
-  image: alpine:latest
+  image: alpine:3.21
   when: manual
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
@@ -75,7 +74,6 @@ pull-from-github:
     - eval $(ssh-agent -s)
     - echo "${GITHUB_SSH_PRIVATE_KEY}" | tr -d '\r' | sed -e 's/^[ \t]*//' | sed -e 's/[ \t]*$//' > private_key.pem
     - chmod 600 private_key.pem
-    - ssh-keygen -p -f private_key.pem -m pem -P "" -N ""
     - ssh-add private_key.pem
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh

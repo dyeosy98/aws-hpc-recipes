@@ -161,9 +161,12 @@ Resources:
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         Keypair: !Ref Keypair
+        ClientIpCidr: !Ref ClientIpCidr
+        VpcCidr: !GetAtt [ RESExternal, Outputs.VpcCidr ]
         ServiceAccountCredentialsSecretArn: !GetAtt [ RESExternal, Outputs.ServiceAccountCredentialsSecretArn ]
         VpcId: !GetAtt [ RESExternal, Outputs.VpcId ]
         PublicSubnet: !Select [0, !Split [",", !GetAtt RESExternal.Outputs.PublicSubnets]]
+        PrivateSubnet: !Select [0, !Split [",", !GetAtt RESExternal.Outputs.PrivateSubnets]]
         ServiceAccountUserDN: !GetAtt [ RESExternal, Outputs.ServiceAccountUserDN ]
         UsersDN: !GetAtt [ RESExternal, Outputs.LDAPBase ]
         LDAPConnectionURI: !GetAtt [ RESExternal, Outputs.LDAPConnectionURI ]
