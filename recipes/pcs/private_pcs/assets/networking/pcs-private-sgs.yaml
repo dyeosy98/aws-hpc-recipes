@@ -75,7 +75,16 @@ Resources:
       ToPort: 443
       SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow RegisterComputeNodeGroupInstance from compute nodes SG
-  
+
+  # Overwrite default allow-all outbound rule
+  PCSEndpointSelfEgressRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref PCSVpcEndpointSecurityGroup
+      IpProtocol: '-1'
+      SourceSecurityGroupId: !Ref PCSVpcEndpointSecurityGroup
+      Description: Overwrite default allow-all outbound rule - this rule can be deleted after creation
+
   # Cluster Security Group (shared by all nodes)
   # Follows AWS PCS restrictive security group requirements:
   # https://docs.aws.amazon.com/pcs/latest/userguide/working-with_networking_sg.html#working-with_networking_sg-requirements
@@ -210,25 +219,36 @@ Resources:
       DestinationSecurityGroupId: !Ref PCSVpcEndpointSecurityGroup
       Description: Allow RegisterComputeNodeGroupInstance to PCS VPC Endpoint SG
 
-  # Allow Srun I/O traffic from compute nodes (for interactive srun) - SHOULD BE 60001-63000
+  # Allow Srun I/O traffic from compute nodes (for interactive srun)
   LoginNodeSrunFromComputeIngressRule:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       GroupId: !Ref LoginNodeSecurityGroup
       IpProtocol: tcp
-      FromPort: 0
-      ToPort: 65535
+      FromPort: 32768
+      ToPort: 60999
       SourceSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow srun I/O traffic from compute nodes
 
-  # Allow Srun I/O traffic to compute nodes (for interactive srun) - SHOULD BE 60001-63000
+  # Allow Srun I/O traffic to compute nodes (for interactive srun)
+  LoginNodeSrunToComputeEgressRule6818:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LoginNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6818
+      ToPort: 6818
+      DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
+      Description: Allow slurmd traffic to compute nodes for srun I/O
+      
+  # Allow Srun I/O traffic to compute nodes (for interactive srun)
   LoginNodeSrunToComputeEgressRule:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !Ref LoginNodeSecurityGroup
       IpProtocol: tcp
-      FromPort: 0
-      ToPort: 65535
+      FromPort: 32768
+      ToPort: 60999
       DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow srun I/O traffic to compute nodes
 
@@ -351,25 +371,36 @@ Resources:
       DestinationSecurityGroupId: !Ref ComputeNodeSecurityGroup
       Description: Allow all traffic within SG for EFA and Slurm
 
-  # Allow Srun I/O traffic from login nodes (for interactive srun) - SHOULD BE 60001-63000
+  # Allow Srun I/O traffic from login nodes (for interactive srun)
+  ComputeNodeSrunFromLoginIngressRule6818:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ComputeNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 6818
+      ToPort: 6818
+      SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
+      Description: Allow slurmd traffic from login nodes for srun I/O
+      
+  # Allow Srun I/O traffic from login nodes (for interactive srun)
   ComputeNodeSrunFromLoginIngressRule:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       GroupId: !Ref ComputeNodeSecurityGroup
       IpProtocol: tcp
-      FromPort: 0
-      ToPort: 65535
+      FromPort: 32768
+      ToPort: 60999
       SourceSecurityGroupId: !Ref LoginNodeSecurityGroup
       Description: Allow srun I/O traffic from login nodes
 
-  # Allow Srun I/O traffic to login nodes (for interactive srun) - SHOULD BE 60001-63000
+  # Allow Srun I/O traffic to login nodes (for interactive srun)
   ComputeNodeSrunToLoginEgressRule:
     Type: AWS::EC2::SecurityGroupEgress
     Properties:
       GroupId: !Ref ComputeNodeSecurityGroup
       IpProtocol: tcp
-      FromPort: 0
-      ToPort: 65535
+      FromPort: 32768
+      ToPort: 60999
       DestinationSecurityGroupId: !Ref LoginNodeSecurityGroup
       Description: Allow srun I/O traffic to login nodes
 

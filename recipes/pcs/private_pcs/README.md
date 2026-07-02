@@ -6,7 +6,7 @@ This recipe provides CloudFormation templates to create the infrastructure for d
 
 ### Architecture
 
-![Architecture diagram for private PCS cluster without internet access](PCSPrivateNetworkingArchitecture-withbastion.drawio.png)
+![Architecture diagram for private PCS cluster without internet access](PCSPrivateNetworking.drawio.png)
 
 The templates in this recipe create:
 
