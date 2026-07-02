@@ -11,7 +11,7 @@ This recipe provides CloudFormation templates to create the infrastructure for d
 The templates in this recipe create:
 
 - [**Networking stack**](assets/networking/pcs-private-networking.yaml): 
-   - A fully private VPC with 1-3 subnets across user-selected AZs
+   - A fully private VPC and a private subnet
    - A PCS VPC interface endpoint
    - Required EFA-enabled security groups for cluster nodes, storage, and the PCS VPC endpoint
 
@@ -87,10 +87,7 @@ Save the private key securely - you'll need it to SSH into login nodes.
 
 Deploy the [`pcs-private-networking.yaml`](assets/networking/pcs-private-networking.yaml) template to create the VPC, subnets, and security groups. Parameters include:
    - `VpcCIDR`: CIDR block for the VPC (e.g., 10.0.0.0/16)
-   - `NumberOfSubnets`: Number of private subnets to create (1, 2, or 3)
-   - `Subnet1AZ/CIDR`: Availability Zone and CIDR for the first subnet
-   - `Subnet2AZ/CIDR (Optional)`: Availability Zone and CIDR for the second subnet
-   - `Subnet3AZ/CIDR (Optional)`: Availability Zone and CIDR for the third subnet
+   - `SubnetAZ/CIDR`: Availability Zone and CIDR for the subnet
    - `CreateEFS`: Set to 'True' if you plan to deploy EFS (creates security group)
    - `CreateFSxLustre`: Set to 'True' if you plan to deploy FSx for Lustre (creates security group)
    - `ClientIpCidr`: IP range allowed to SSH to login nodes
@@ -108,7 +105,6 @@ Deploy any of the storage stacks as needed. Each storage stack is independent an
 
 Deploy the [`pcs-private-efs.yaml`](assets/storage/pcs-private-efs.yaml) template to create the EFS file system. Parameters include:
    - `NetworkingStackName`: Name of the pcs-private-networking stack from Step 1
-   - `SubnetIds`: Select all the private subnets from the dropdown (EFS will create a mount target in each)
    - `EFSPerformanceMode`: generalPurpose or maxIO
    - `EFSThroughputMode`: bursting or elastic
 
@@ -116,7 +112,6 @@ Deploy the [`pcs-private-efs.yaml`](assets/storage/pcs-private-efs.yaml) templat
 
 Deploy the [`pcs-private-fsxl.yaml`](assets/storage/pcs-private-fsxl.yaml) template to create the EFS file system. Parameters include:
    - `NetworkingStackName`: Name of the pcs-private-networking stack from Step 1
-   - `SubnetId`: Select one of the private subnets from the dropdown
    - `FSxLustreStorageCapacity`: Storage capacity in GiB (minimum 1200, increments of 2400)
    - `FSxLustrePerUnitStorageThroughput`: Throughput in MB/s/TiB (125, 250, 500, or 1000)
    - `FSxLustreDataCompressionType`: Data compression (NONE or LZ4 for automatic compression)
