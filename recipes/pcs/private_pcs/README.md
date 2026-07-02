@@ -97,6 +97,9 @@ Deploy the [`pcs-private-networking.yaml`](assets/networking/pcs-private-network
    - `HpcRecipesS3Bucket`: S3 bucket containing the templates
    - `HpcRecipesBranch`: Branch/version of the templates
 
+> [!NOTE]
+> This stack creates a Security Group named <stack name>-PCSEndpoint-SG, with a self-referencing egress rule. This egress rule is not required, but was added to override the default allow-all egress rule. This egress rule can be removed after creation. 
+
 ### Step 2: Deploy Storage Infrastructure (Optional)
 
 Deploy any of the storage stacks as needed. Each storage stack is independent and can be deployed in any order.
