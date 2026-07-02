@@ -15,7 +15,6 @@ Metadata:
           default: Networking Stack Reference
         Parameters:
           - NetworkingStackName
-          - SubnetId
       - Label:
           default: FSx for Lustre Configuration
         Parameters:
@@ -28,10 +27,6 @@ Parameters:
     Description: Name of the pcs-private-networking CloudFormation stack
     Type: String
     Default: 'pcs-private-networking'
-
-  SubnetId:
-    Description: Subnet ID to deploy FSx Lustre in (must be one of the private subnets from the networking stack)
-    Type: AWS::EC2::Subnet::Id
 
   FSxLustreStorageCapacity:
     Description: Storage capacity for FSx for Lustre (GiB). Must be 1200 GiB or increments of 2400 GiB.
@@ -65,7 +60,7 @@ Resources:
       FileSystemType: LUSTRE
       StorageCapacity: !Ref FSxLustreStorageCapacity
       SubnetIds:
-        - !Ref SubnetId
+        - Fn::ImportValue: !Sub '${NetworkingStackName}-PrivateSubnetId'
       SecurityGroupIds:
         - Fn::ImportValue: !Sub '${NetworkingStackName}-FSxLustreSecurityGroupId'
       LustreConfiguration:

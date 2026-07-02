@@ -18,13 +18,8 @@ Metadata:
       - Label:
           default: Subnet Configuration
         Parameters:
-          - NumberOfSubnets
-          - Subnet1AZ
-          - Subnet1CIDR
-          - Subnet2AZ
-          - Subnet2CIDR
-          - Subnet3AZ
-          - Subnet3CIDR
+          - SubnetAZ
+          - SubnetCIDR
       - Label:
           default: File System Options
         Parameters:
@@ -48,47 +43,16 @@ Parameters:
     AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
     ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
 
-  NumberOfSubnets:
-    Description: Number of private subnets to create (1, 2, or 3)
-    Type: Number
-    Default: 1
-    MinValue: 1
-    MaxValue: 3
-
-  Subnet1AZ:
-    Description: Availability Zone for the first private subnet
+  SubnetAZ:
+    Description: Availability Zone for the private subnet
     Type: AWS::EC2::AvailabilityZone::Name
 
-  Subnet1CIDR:
-    Description: CIDR block for the first private subnet (e.g., 10.0.0.0/20)
+  SubnetCIDR:
+    Description: CIDR block for the private subnet (e.g., 10.0.0.0/20)
     Type: String
     Default: 10.0.0.0/20
     AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
     ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
-
-  Subnet2AZ:
-    Description: Availability Zone for the second private subnet (required if NumberOfSubnets is 2 or 3, e.g., ap-northeast-1a)
-    Type: String
-    Default: ''
-
-  Subnet2CIDR:
-    Description: CIDR block for the second private subnet (required if NumberOfSubnets is 2 or 3, e.g., 10.0.16.0/20)
-    Type: String
-    Default: 10.0.16.0/20
-    AllowedPattern: '(((\d{1,3})\.){3}\d{1,3}/\d{1,2})?'
-    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x or empty
-
-  Subnet3AZ:
-    Description: Availability Zone for the third private subnet (required if NumberOfSubnets is 3, e.g., ap-northeast-1a)
-    Type: String
-    Default: ''
-
-  Subnet3CIDR:
-    Description: CIDR block for the third private subnet (required if NumberOfSubnets is 3, e.g., 10.0.32.0/20)
-    Type: String
-    Default: 10.0.32.0/20
-    AllowedPattern: '(((\d{1,3})\.){3}\d{1,3}/\d{1,2})?'
-    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x or empty
 
   CreateEFS:
     Description: Create Amazon EFS file system
@@ -124,10 +88,6 @@ Parameters:
     Default: main
 
 Conditions:
-  CreateSubnet2: !Or
-    - !Equals [!Ref NumberOfSubnets, 2]
-    - !Equals [!Ref NumberOfSubnets, 3]
-  CreateSubnet3: !Equals [!Ref NumberOfSubnets, 3]
   CreateEFSResources: !Equals [!Ref CreateEFS, 'True']
   CreateFSxLustreResources: !Equals [!Ref CreateFSxLustre, 'True']
   CreateAnyStorage: !Or
@@ -143,13 +103,8 @@ Resources:
       Parameters:
         StackName: !Ref AWS::StackName
         VpcCIDR: !Ref VpcCIDR
-        NumberOfSubnets: !Ref NumberOfSubnets
-        Subnet1AZ: !Ref Subnet1AZ
-        Subnet1CIDR: !Ref Subnet1CIDR
-        Subnet2AZ: !Ref Subnet2AZ
-        Subnet2CIDR: !Ref Subnet2CIDR
-        Subnet3AZ: !Ref Subnet3AZ
-        Subnet3CIDR: !Ref Subnet3CIDR
+        SubnetAZ: !Ref SubnetAZ
+        SubnetCIDR: !Ref SubnetCIDR
 
   # Security Groups Nested Stack
   SecurityGroups:
@@ -174,9 +129,8 @@ Resources:
       VpcEndpointType: Interface
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.pcs'
       VpcId: !GetAtt Networking.Outputs.VpcId
-      SubnetIds: !Split
-        - ','
-        - !GetAtt Networking.Outputs.PrivateSubnetIds
+      SubnetIds:
+        - !GetAtt Networking.Outputs.PrivateSubnetId
       SecurityGroupIds:
         - !GetAtt SecurityGroups.Outputs.PCSVpcEndpointSecurityGroupId
       PrivateDnsEnabled: true
@@ -192,51 +146,11 @@ Outputs:
     Description: Name of this CloudFormation stack (for reference in storage stacks)
     Value: !Ref AWS::StackName
 
-  PrivateSubnet1Id:
-    Description: ID of the first private subnet
-    Value: !GetAtt Networking.Outputs.PrivateSubnet1Id
+  PrivateSubnetId:
+    Description: ID of the private subnet
+    Value: !GetAtt Networking.Outputs.PrivateSubnetId
     Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet1Id'
-
-  PrivateSubnet1AZ:
-    Description: Availability Zone of the first private subnet
-    Value: !GetAtt Networking.Outputs.PrivateSubnet1AZ
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet1AZ'
-
-  PrivateSubnet2Id:
-    Description: ID of the second private subnet (only if created)
-    Condition: CreateSubnet2
-    Value: !GetAtt Networking.Outputs.PrivateSubnet2Id
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet2Id'
-
-  PrivateSubnet2AZ:
-    Description: Availability Zone of the second private subnet (only if created)
-    Condition: CreateSubnet2
-    Value: !GetAtt Networking.Outputs.PrivateSubnet2AZ
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet2AZ'
-
-  PrivateSubnet3Id:
-    Description: ID of the third private subnet (only if created)
-    Condition: CreateSubnet3
-    Value: !GetAtt Networking.Outputs.PrivateSubnet3Id
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet3Id'
-
-  PrivateSubnet3AZ:
-    Description: Availability Zone of the third private subnet (only if created)
-    Condition: CreateSubnet3
-    Value: !GetAtt Networking.Outputs.PrivateSubnet3AZ
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnet3AZ'
-
-  PrivateSubnetIds:
-    Description: Comma-separated list of private subnet IDs
-    Value: !GetAtt Networking.Outputs.PrivateSubnetIds
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateSubnetIds'
+      Name: !Sub '${AWS::StackName}-PrivateSubnetId'
 
   ClusterSecurityGroupId:
     Description: SG ID for PCS cluster - shared by controller, compute, and login nodes
@@ -293,20 +207,3 @@ Outputs:
     Value: !GetAtt SecurityGroups.Outputs.PCSVpcEndpointSecurityGroupId
     Export:
       Name: !Sub '${AWS::StackName}-PCSVpcEndpointSecurityGroupId'
-
-  # RouteTablePrivate1Id:
-  #   Description: ID of the first private route table
-  #   Value: !Ref RouteTablePrivate1
-  #   Export:
-  #     Name: !Sub '${AWS::StackName}-RouteTablePrivate1Id'
-
-  # RouteTablePrivate2Id:
-  #   Description: ID of the second private route table (only if created)
-  #   Condition: CreateSubnet2
-  #   Value: !Ref RouteTablePrivate2
-  #   Export:
-  #     Name: !Sub '${AWS::StackName}-RouteTablePrivate2Id'
-
-  # ConsoleUrl:
-  #   Description: Link to the VPC in the AWS Console
-  #   Value: !Sub 'https://console.${AWS::URLSuffix}/vpc/home?region=${AWS::Region}#VpcDetails:VpcId=${Vpc}'

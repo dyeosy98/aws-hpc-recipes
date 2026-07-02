@@ -131,7 +131,7 @@ Resources:
         Version: !Ref SlurmVersion
       Networking:
         SubnetIds:
-          - Fn::ImportValue: !Sub '${NetworkingStackName}-PrivateSubnet1Id'
+          - Fn::ImportValue: !Sub '${NetworkingStackName}-PrivateSubnetId'
         SecurityGroupIds:
           - Fn::ImportValue: !Sub '${NetworkingStackName}-ClusterSecurityGroupId'
       Size: !Ref ClusterSize
@@ -157,7 +157,7 @@ Resources:
       AmiId:
         Fn::ImportValue: !Sub '${LaunchTemplateStackName}-LoginAmiId'
       SubnetIds:
-        - Fn::ImportValue: !Sub '${NetworkingStackName}-PrivateSubnet1Id'
+        - Fn::ImportValue: !Sub '${NetworkingStackName}-PrivateSubnetId'
       InstanceConfigs:
         - InstanceType: !Ref LoginNodeInstanceType
       ScalingConfiguration:
@@ -179,7 +179,7 @@ Resources:
       AmiId:
         Fn::ImportValue: !Sub '${LaunchTemplateStackName}-ComputeAmiId'
       SubnetIds:
-        - Fn::ImportValue: !Sub '${NetworkingStackName}-PrivateSubnet1Id'
+        - Fn::ImportValue: !Sub '${NetworkingStackName}-PrivateSubnetId'
       InstanceConfigs:
         - InstanceType: !Ref ComputeNodeInstanceType
       ScalingConfiguration:

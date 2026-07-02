@@ -82,7 +82,7 @@ Resources:
     Properties:
       GroupId: !Ref PCSVpcEndpointSecurityGroup
       IpProtocol: '-1'
-      SourceSecurityGroupId: !Ref PCSVpcEndpointSecurityGroup
+      DestinationSecurityGroupId: !Ref PCSVpcEndpointSecurityGroup
       Description: Overwrite default allow-all outbound rule - this rule can be deleted after creation
 
   # Cluster Security Group (shared by all nodes)

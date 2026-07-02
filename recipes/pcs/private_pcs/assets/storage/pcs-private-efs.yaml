@@ -13,7 +13,6 @@ Metadata:
           default: Networking Stack Reference
         Parameters:
           - NetworkingStackName
-          - SubnetIds
       - Label:
           default: EFS Configuration
         Parameters:
@@ -25,10 +24,6 @@ Parameters:
     Description: Name of the pcs-private-networking CloudFormation stack
     Type: String
     Default: 'pcs-private-networking'
-
-  SubnetIds:
-    Description: Select the private subnets for EFS mount targets (select all subnets from the networking stack)
-    Type: List<AWS::EC2::Subnet::Id>
 
   EFSPerformanceMode:
     Description: Performance mode for EFS
@@ -62,17 +57,15 @@ Resources:
         - Key: NetworkingStack
           Value: !Ref NetworkingStackName
 
-  # EFS Mount Targets (one per selected subnet)
-  'Fn::ForEach::MountTargets':
-    - SubnetId
-    - !Ref SubnetIds
-    - 'EFSMountTarget&{SubnetId}':
-        Type: AWS::EFS::MountTarget
-        Properties:
-          FileSystemId: !Ref EFSFileSystem
-          SubnetId: !Ref SubnetId
-          SecurityGroups:
-            - Fn::ImportValue: !Sub '${NetworkingStackName}-EFSSecurityGroupId'
+  # EFS Mount Targets
+  EFSMountTarget:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: 
+        Fn::ImportValue: !Sub '${NetworkingStackName}-PrivateSubnetId'
+      SecurityGroups:
+        - Fn::ImportValue: !Sub '${NetworkingStackName}-EFSSecurityGroupId'
 
 Outputs:
   EFSFileSystemId:
